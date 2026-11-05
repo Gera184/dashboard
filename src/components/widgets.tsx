@@ -1,9 +1,17 @@
-import { ArrowDown, ArrowUp, Building2, ChartColumn, Coins, Ellipsis, Megaphone, Monitor, Percent, ReceiptText, Users } from "lucide-react";
-import { changes, employees, expenseCategories, incomeSources, totals } from "@/lib/data";
+import Link from "next/link";
+import {
+  ArrowDown, ArrowUp, Building2, Car, ChartColumn, CircleMinus, CirclePlus, Coins, Ellipsis, Megaphone,
+  Monitor, Percent, ReceiptText, Truck, Users,
+} from "lucide-react";
+import type { Summary } from "@/lib/data";
 import { formatILS, formatPercent, formatSignedPercent } from "@/lib/format";
 import { TONE_HEX } from "@/lib/tones";
+import { Empty } from "./empty";
 
-function Change({ value, goodWhenUp }: { value: number; goodWhenUp: boolean }) {
+export { Empty };
+
+function Change({ value, goodWhenUp }: { value: number | null; goodWhenUp: boolean }) {
+  if (value === null) return <span className="kpi-change none">—</span>;
   const up = value >= 0;
   const good = up === goodWhenUp;
   const Icon = up ? ArrowUp : ArrowDown;
@@ -15,21 +23,21 @@ function Change({ value, goodWhenUp }: { value: number; goodWhenUp: boolean }) {
   );
 }
 
-export function SummaryCards() {
+export function SummaryCards({ s }: { s: Summary }) {
   const cards = [
-    { key: "income", label: "סה״כ הכנסות", value: totals.income, change: changes.income, goodWhenUp: true, icon: ChartColumn, tone: "green" },
-    { key: "expense", label: "סה״כ הוצאות", value: totals.expenses, change: changes.expenses, goodWhenUp: false, icon: ReceiptText, tone: "red" },
-    { key: "profit", label: "רווח נקי", value: totals.profit, change: changes.profit, goodWhenUp: true, icon: Coins, tone: "green" },
+    { key: "income", label: "סה״כ הכנסות", value: s.totals.income, change: s.changes.income, goodWhenUp: true, icon: ChartColumn, tone: "green" },
+    { key: "expense", label: "סה״כ הוצאות", value: s.totals.expenses, change: s.changes.expenses, goodWhenUp: false, icon: ReceiptText, tone: "red" },
+    { key: "profit", label: "רווח נקי", value: s.totals.profit, change: s.changes.profit, goodWhenUp: true, icon: Coins, tone: s.totals.profit < 0 ? "red" : "green" },
   ] as const;
   return (
-    <section className="kpis" aria-label="סיכום החודש">
+    <section className="kpis" aria-label={`סיכום ${s.label}`}>
       {cards.map((c) => (
         <article key={c.key} className={`card kpi ${c.key}`}>
           <div style={{ zIndex: 1 }}>
             <div className="kpi-label">{c.label}</div>
             <div className="kpi-value num">{formatILS(c.value)}</div>
             <Change value={c.change} goodWhenUp={c.goodWhenUp} />
-            <span className="kpi-sub">לעומת החודש הקודם</span>
+            <span className="kpi-sub">{s.hasPrev ? "לעומת החודש הקודם" : "אין נתונים לחודש הקודם"}</span>
           </div>
           <span className={`kpi-icon ${c.tone}`} aria-hidden>
             <c.icon size={28} />
@@ -40,93 +48,127 @@ export function SummaryCards() {
   );
 }
 
-export function IncomeBySource() {
-  const max = Math.max(...incomeSources.map((s) => s.amount));
+export function GettingStarted({ month }: { month: string }) {
+  const q = `?month=${month}`;
+  return (
+    <section className="card getting-started">
+      <div>
+        <h2>אין עדיין נתונים לחודש הזה</h2>
+        <p className="muted">הוסיפו הכנסות, הוצאות ועובדים, וכל הכרטיסים והגרפים יתעדכנו אוטומטית.</p>
+      </div>
+      <div className="gs-actions">
+        <Link className="btn-primary" href={`/dashboard/income${q}`}><CirclePlus size={16} aria-hidden /> הוספת הכנסה</Link>
+        <Link className="btn-secondary" href={`/dashboard/expenses${q}`}><CircleMinus size={16} aria-hidden /> הוספת הוצאה</Link>
+        <Link className="btn-secondary" href={`/dashboard/employees${q}`}><Users size={16} aria-hidden /> ניהול עובדים</Link>
+      </div>
+    </section>
+  );
+}
+
+export function IncomeBySource({ s }: { s: Summary }) {
+  const max = Math.max(0, ...s.incomeSources.map((x) => x.amount));
   return (
     <section className="card" aria-labelledby="src-t">
       <div className="card-head">
         <h2 id="src-t">הכנסות לפי מקור</h2>
-        <span className="select-btn" style={{ cursor: "default" }}>החודש הנוכחי</span>
+        <span className="select-btn" style={{ cursor: "default" }}>{s.label}</span>
       </div>
-      <ul className="bar-list">
-        {incomeSources.map((s) => (
-          <li key={s.name}>
-            <span>{s.name}</span>
-            <span className="bar-track" aria-hidden>
-              <span className={`bar-fill tone-${s.tone}`} style={{ width: `${(s.amount / max) * 100}%`, display: "block" }} />
-            </span>
-            <span className="amount num">{formatILS(s.amount)}</span>
-            <span className="pct num">{formatPercent(s.amount / totals.income)}</span>
-          </li>
-        ))}
-      </ul>
+      {s.incomeSources.length === 0 ? (
+        <Empty text="עדיין לא הוזנו הכנסות החודש." href={`/dashboard/income?month=${s.month}`} cta="הוספת הכנסה" />
+      ) : (
+        <ul className="bar-list">
+          {s.incomeSources.map((x) => (
+            <li key={x.name}>
+              <span>{x.name}</span>
+              <span className="bar-track" aria-hidden>
+                <span className={`bar-fill tone-${x.tone}`} style={{ width: `${(x.amount / max) * 100}%`, display: "block" }} />
+              </span>
+              <span className="amount num">{formatILS(x.amount)}</span>
+              <span className="pct num">{formatPercent(x.amount / s.totals.income)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
 
-const CAT_ICONS = { megaphone: Megaphone, users: Users, percent: Percent, building: Building2, monitor: Monitor, more: Ellipsis } as const;
+const CAT_ICONS = { megaphone: Megaphone, users: Users, percent: Percent, building: Building2, monitor: Monitor, car: Car, truck: Truck, more: Ellipsis } as const;
 
-export function ExpenseByCategory() {
+export function ExpenseByCategory({ s }: { s: Summary }) {
   return (
     <section className="card" aria-labelledby="cat-t">
       <div className="card-head">
         <h2 id="cat-t">הוצאות לפי קטגוריה</h2>
-        <span className="select-btn" style={{ cursor: "default" }}>החודש הנוכחי</span>
+        <span className="select-btn" style={{ cursor: "default" }}>{s.label}</span>
       </div>
-      <ul className="cat-list">
-        {expenseCategories.map((c) => {
-          const Icon = CAT_ICONS[c.icon];
-          const hex = TONE_HEX[c.tone];
-          return (
-            <li key={c.name}>
-              <span className="cat-icon" style={{ background: `${hex}1f`, color: hex }} aria-hidden>
-                <Icon size={16} />
-              </span>
-              <span>{c.name}</span>
-              <span className="amount num">{formatILS(c.amount)}</span>
-              <span className="pct num">{formatPercent(c.amount / totals.expenses)}</span>
-            </li>
-          );
-        })}
-      </ul>
+      {s.expenseCategories.length === 0 ? (
+        <Empty text="עדיין לא הוזנו הוצאות החודש." href={`/dashboard/expenses?month=${s.month}`} cta="הוספת הוצאה" />
+      ) : (
+        <ul className="cat-list">
+          {s.expenseCategories.map((c) => {
+            const Icon = CAT_ICONS[c.icon];
+            const hex = TONE_HEX[c.tone];
+            return (
+              <li key={c.name}>
+                <span className="cat-icon" style={{ background: `${hex}1f`, color: hex }} aria-hidden>
+                  <Icon size={16} />
+                </span>
+                <span>{c.name}</span>
+                <span className="amount num">{formatILS(c.amount)}</span>
+                <span className="pct num">{formatPercent(c.amount / s.totals.expenses)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }
 
-export function EmployeesTable() {
+export function EmployeesTable({ s }: { s: Summary }) {
   return (
     <section className="card" aria-labelledby="emp-t">
       <div className="card-head">
         <h2 id="emp-t">עובדים ועמלות</h2>
-        <button className="link-btn" type="button">הצג הכל</button>
+        <Link className="link-btn" href={`/dashboard/employees?month=${s.month}`}>ניהול עובדים</Link>
       </div>
-      <div className="table-scroll">
-        <table className="data">
-          <thead>
-            <tr><th>עובד</th><th>עמלת החודש</th><th>מכירות / יעד</th><th>עמידה ביעד</th></tr>
-          </thead>
-          <tbody>
-            {employees.map((e) => {
-              const color = e.progress >= 1 ? "#16a34a" : e.progress >= 0.8 ? "#d9932a" : "#f0567a";
-              return (
-                <tr key={e.name}>
+      {s.employees.length === 0 ? (
+        <Empty text="עדיין לא נוספו עובדים." href={`/dashboard/employees?month=${s.month}`} cta="הוספת עובד" />
+      ) : (
+        <div className="table-scroll">
+          <table className="data">
+            <thead>
+              <tr><th>עובד</th><th>עמלת החודש</th><th>מכירות / יעד</th><th>עמידה ביעד</th></tr>
+            </thead>
+            <tbody>
+              {s.employees.map((e) => (
+                <tr key={e.id}>
                   <td style={{ fontWeight: 600 }}>{e.name}</td>
                   <td className="num">{formatILS(e.commission)}</td>
-                  <td className="num"><span>{formatILS(e.sales)}</span> <span className="muted">/ {formatILS(e.target)}</span></td>
-                  <td>
-                    <div className="progress">
-                      <span className="progress-track" aria-hidden>
-                        <span className="progress-fill" style={{ width: `${Math.min(e.progress, 1) * 100}%`, background: color, display: "block" }} />
-                      </span>
-                      <small className="num">{formatPercent(e.progress)}</small>
-                    </div>
+                  <td className="num">
+                    <span>{formatILS(e.sales)}</span> {e.target > 0 && <span className="muted">/ {formatILS(e.target)}</span>}
                   </td>
+                  <td><Progress value={e.progress} /></td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
+  );
+}
+
+export function Progress({ value }: { value: number | null }) {
+  if (value === null) return <span className="muted">ללא יעד</span>;
+  const color = value >= 1 ? "#16a34a" : value >= 0.8 ? "#d9932a" : "#f0567a";
+  return (
+    <div className="progress">
+      <span className="progress-track" aria-hidden>
+        <span className="progress-fill" style={{ width: `${Math.min(value, 1) * 100}%`, background: color, display: "block" }} />
+      </span>
+      <small className="num">{formatPercent(value)}</small>
+    </div>
   );
 }
