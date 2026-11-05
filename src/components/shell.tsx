@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { NAV } from "./nav";
 import { logout } from "@/app/login/actions";
+import { isMonthKey, periodLabel } from "@/lib/data";
 
 const ICONS = {
   house: House, income: CirclePlus, expenses: CircleMinus, salaries: Banknote, loans: Landmark,
@@ -36,7 +37,8 @@ export function Shell({ displayName, months, children }: { displayName: string; 
   const pathname = usePathname();
   const params = useSearchParams();
   const requested = params.get("month");
-  const month = months.find((m) => m.key === requested) ?? months[0];
+  // Pages accept any valid ?month=, so the header must show that month too (even one with no data).
+  const month = months.find((m) => m.key === requested) ?? (isMonthKey(requested) ? { key: requested, label: periodLabel(requested) } : months[0]);
   const q = month.key === months[0].key && !requested ? "" : `?month=${month.key}`;
   useEffect(() => setNavOpen(false), [pathname]);
   useEffect(() => {

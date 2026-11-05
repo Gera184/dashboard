@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
-import { Check, Plus, Trash2 } from "lucide-react";
-import { addEmployee, addEntry, addLoan, addOrder, addSale, setOrderPaid, updateEmployee, type FormState } from "@/app/dashboard/actions";
+import { Archive, ArchiveRestore, Check, Plus, Trash2 } from "lucide-react";
+import { addEmployee, addEntry, addLoan, addOrder, addSale, setEmployeeArchived, setOrderPaid, updateEmployee, type FormState } from "@/app/dashboard/actions";
 
 function Status({ state, okText }: { state: FormState; okText: string }) {
   const [showOk, setShowOk] = useState(false);
@@ -252,6 +252,23 @@ export function PaidToggle({ id, paid }: { id: string; paid: boolean }) {
       <input type="hidden" name="paid" value={paid ? "0" : "1"} />
       <button type="submit" className={paid ? "status-pill paid" : "status-pill open"} title={paid ? "לחצו כדי לסמן כלא שולם" : "לחצו כדי לסמן כשולם"}>
         {paid ? <><Check size={14} aria-hidden /> שולם</> : "לא שולם · סמן כשולם"}
+      </button>
+    </form>
+  );
+}
+
+/** Archive an agent who left (keeps their sales in past months) or bring them back. */
+export function ArchiveToggle({ id, archived, name }: { id: string; archived: boolean; name: string }) {
+  const label = archived ? `החזרת ${name} לפעילות` : `העברת ${name} לארכיון`;
+  return (
+    <form
+      action={setEmployeeArchived}
+      onSubmit={(e) => { if (!archived && !confirm(`להעביר את ${name} לארכיון? המכירות שלו/ה יישארו בכל החודשים, והוא/היא לא יופיעו יותר בטופס המכירות.`)) e.preventDefault(); }}
+    >
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="archived" value={archived ? "0" : "1"} />
+      <button type="submit" className="icon-btn" aria-label={label} title={label}>
+        {archived ? <ArchiveRestore size={16} aria-hidden /> : <Archive size={16} aria-hidden />}
       </button>
     </form>
   );

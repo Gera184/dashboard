@@ -2,7 +2,7 @@ import { requireSession } from "@/lib/auth/session";
 import { readStore } from "@/lib/store";
 import { defaultDateFor, employeeRows, formatDate, monthLabel, resolveMonth, salesFor } from "@/lib/data";
 import { formatILS } from "@/lib/format";
-import { DeleteButton, EmployeeForm, EmployeeSettings, SaleForm } from "@/components/forms";
+import { ArchiveToggle, DeleteButton, EmployeeForm, EmployeeSettings, SaleForm } from "@/components/forms";
 import { Empty } from "@/components/empty";
 import { Progress } from "@/components/widgets";
 import { deleteEmployee, deleteSale } from "../actions";
@@ -11,7 +11,9 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
   await requireSession();
   const month = resolveMonth((await searchParams).month);
   const store = await readStore();
-  const rows = employeeRows(store, month);
+  const rows = employeeRows(store, month, { includeArchived: true }).sort((a, b) => Number(!!a.archived) - Number(!!b.archived));
+  const active = rows.filter((r) => !r.archived);
+  const hasAnySales = new Set(store.sales.map((x) => x.employeeId));
   const sales = salesFor(store, month);
   const names = new Map(store.employees.map((e) => [e.id, e.name]));
   const totalCommission = rows.reduce((s, r) => s + r.commission, 0);
@@ -28,7 +30,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
           <h2 id="sale-add-t">רישום מכירה</h2>
           <span className="muted">כל מכירה נספרת כהכנסה בדשבורד, והעמלה מחושבת לפי אחוז העמלה של הנציג</span>
         </div>
-        {rows.length === 0 ? <Empty text="קודם הוסיפו נציג, ואז אפשר לרשום לו מכירות." /> : <SaleForm employees={rows.map((r) => ({ id: r.id, name: r.name }))} defaultDate={defaultDateFor(month)} />}
+        {active.length === 0 ? <Empty text="קודם הוסיפו נציג, ואז אפשר לרשום לו מכירות." /> : <SaleForm employees={active.map((r) => ({ id: r.id, name: r.name }))} defaultDate={defaultDateFor(month)} />}
       </section>
 
       <section className="card" aria-labelledby="emp-list-t">
@@ -46,14 +48,19 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td style={{ fontWeight: 600 }}>{r.name}</td>
+                  <tr key={r.id} className={r.archived ? "archived" : undefined}>
+                    <td style={{ fontWeight: 600 }}>{r.name}{r.archived && <small className="muted"> · בארכיון</small>}</td>
                     <td className="num">{formatILS(r.sales)}</td>
                     <td className="num">{formatILS(r.commission)}</td>
                     <td><Progress value={r.progress} /></td>
                     <td><EmployeeSettings key={`${r.target}-${r.commissionRate}`} id={r.id} target={r.target} commissionRate={r.commissionRate} /></td>
                     <td className="end">
-                      <DeleteButton action={deleteEmployee} id={r.id} confirmText={`למחוק את ${r.name} ואת כל המכירות שלו/ה?`} label={`מחיקת ${r.name}`} />
+                      {hasAnySales.has(r.id) ? (
+                        // Deleting would remove their sales from past months' income, so only archiving is offered.
+                        <ArchiveToggle id={r.id} archived={!!r.archived} name={r.name} />
+                      ) : (
+                        <DeleteButton action={deleteEmployee} id={r.id} confirmText={`למחוק את ${r.name}?`} label={`מחיקת ${r.name}`} />
+                      )}
                     </td>
                   </tr>
                 ))}

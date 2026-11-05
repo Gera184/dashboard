@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import { ChartNoAxesColumn, ShieldCheck } from "lucide-react";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { SESSION_COOKIE } from "@/lib/auth/config";
+import { verifySessionToken } from "@/lib/auth/session";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "כניסה | העסק שלי" };
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  if (await verifySessionToken((await cookies()).get(SESSION_COOKIE)?.value)) redirect("/dashboard");
   return (
     <main className="login-page">
       <aside className="login-side" aria-hidden>

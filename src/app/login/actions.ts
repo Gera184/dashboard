@@ -4,8 +4,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAdminConfig } from "@/lib/auth/config";
 import { safeEqual, verifyPassword } from "@/lib/auth/password";
-import { clearFailures, isLocked, recordFailure } from "@/lib/auth/rate-limit";
-import { clearSessionCookie, createSessionToken, requireSession, setSessionCookie } from "@/lib/auth/session";
+import { clearFailures, reserveAttempt, type Limit } from "@/lib/auth/rate-limit";
+import { clearSessionCookie, createSessionToken, repairRevocationFile, requireSession, revokeAllSessions, setSessionCookie } from "@/lib/auth/session";
 
 export type LoginState = { error?: string; username?: string } | undefined;
 
@@ -19,10 +19,18 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   }
   if (!username || !password) return { error: "יש למלא שם משתמש וסיסמה.", username };
 
+  // X-Forwarded-For is set by the client unless a trusted proxy overwrites it, so only use it when
+  // TRUST_PROXY=1 says such a proxy is in front. Otherwise every request shares one "direct" bucket.
   const h = await headers();
-  const ip = (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "local").trim();
-  const keys = [`ip:${ip}`, `user:${username.toLowerCase()}`];
-  if (keys.some(isLocked)) {
+  const ip = process.env.TRUST_PROXY === "1" ? (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "unknown").trim() : "direct";
+  const limits: Limit[] = [{ key: `ip:${ip}`, max: 5 }];
+  // Backstop against guessing the real username from many addresses. Only the configured username
+  // gets a key, so junk usernames cannot grow the table.
+  const userKey = username.toLowerCase();
+  if (safeEqual(userKey, config.username.toLowerCase())) limits.push({ key: `user:${userKey}`, max: 20 });
+
+  // Reserve the attempt before the slow check, so parallel requests cannot bypass the limit.
+  if (!reserveAttempt(limits)) {
     return { error: "יותר מדי ניסיונות כושלים. נסו שוב בעוד 15 דקות.", username };
   }
 
@@ -30,17 +38,18 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const passwordOk = await verifyPassword(password, config.passwordHash);
   const userOk = safeEqual(username, config.username);
   if (!userOk || !passwordOk) {
-    keys.forEach(recordFailure);
     return { error: "שם המשתמש או הסיסמה שגויים.", username };
   }
 
-  keys.forEach(clearFailures);
+  clearFailures(limits);
+  await repairRevocationFile();
   await setSessionCookie(await createSessionToken(config.username, config.sessionSecret));
   redirect("/dashboard");
 }
 
 export async function logout() {
   await requireSession();
+  await revokeAllSessions(); // a copied cookie stops working too, not just this browser's
   await clearSessionCookie();
   redirect("/login");
 }

@@ -1,29 +1,48 @@
 import "server-only";
 
-// Simple in-memory limiter: 5 failed attempts per key per 15 minutes.
-// Per-process only; behind several instances use a shared store (e.g. Redis).
+// In-memory login limiter. Per-process only; behind several instances use a shared store (e.g. Redis).
+//
+// - An attempt is reserved synchronously *before* the slow password check, so parallel
+//   requests cannot all slip past the limit.
+// - Locked keys are never evicted early: only entries whose window has passed are pruned,
+//   so flooding the map with junk keys cannot wipe a lock.
 const WINDOW_MS = 15 * 60 * 1000;
-const MAX_FAILURES = 5;
+const MAX_KEYS = 10_000;
 const failures = new Map<string, { count: number; first: number }>();
 
-export function isLocked(key: string): boolean {
-  const entry = failures.get(key);
-  if (!entry) return false;
-  if (Date.now() - entry.first > WINDOW_MS) {
+export type Limit = { key: string; max: number };
+
+function prune(now: number) {
+  for (const [k, e] of failures) if (now - e.first > WINDOW_MS) failures.delete(k);
+}
+
+function live(key: string, now: number) {
+  const e = failures.get(key);
+  if (!e) return undefined;
+  if (now - e.first > WINDOW_MS) {
     failures.delete(key);
-    return false;
+    return undefined;
   }
-  return entry.count >= MAX_FAILURES;
+  return e;
 }
 
-export function recordFailure(key: string) {
+/**
+ * Reserves one attempt on every key. Returns false (and reserves nothing) if any key is already
+ * at its limit. Call clearFailures(keys) after a successful login; a failed one keeps the count.
+ */
+export function reserveAttempt(limits: Limit[]): boolean {
   const now = Date.now();
-  const entry = failures.get(key);
-  if (!entry || now - entry.first > WINDOW_MS) failures.set(key, { count: 1, first: now });
-  else entry.count += 1;
-  if (failures.size > 10_000) failures.clear();
+  if (limits.some((l) => (live(l.key, now)?.count ?? 0) >= l.max)) return false;
+  if (failures.size >= MAX_KEYS) prune(now);
+  for (const l of limits) {
+    const e = live(l.key, now);
+    if (e) e.count += 1;
+    else if (failures.size < MAX_KEYS) failures.set(l.key, { count: 1, first: now });
+    // Map full of live entries: skip creating a new key, but existing (possibly locked) keys keep counting.
+  }
+  return true;
 }
 
-export function clearFailures(key: string) {
-  failures.delete(key);
+export function clearFailures(limits: Limit[]) {
+  for (const l of limits) failures.delete(l.key);
 }
