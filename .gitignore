@@ -13,3 +13,7 @@ next-env.d.ts
 ADMIN-LOGIN.txt
 *LOGIN*.txt
 *.pem
+
+# Mac address for the Vercel pass-through (kept out of the public repo)
+/vercel-proxy/vercel.json
+.vercel
