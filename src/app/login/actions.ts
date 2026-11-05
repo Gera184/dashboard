@@ -22,9 +22,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   // X-Forwarded-For is set by the client unless a trusted proxy overwrites it, so only use it when
   // TRUST_PROXY=1 says such a proxy is in front. Otherwise every request shares one "direct" bucket.
   const h = await headers();
-  // Vercel overwrites X-Forwarded-For with the real client address, so it is trusted there automatically.
-  const trustProxy = process.env.TRUST_PROXY === "1" || process.env.VERCEL === "1";
-  const ip = trustProxy ? (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "unknown").trim() : "direct";
+  const ip = process.env.TRUST_PROXY === "1" ? (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "unknown").trim() : "direct";
   const limits: Limit[] = [{ key: `ip:${ip}`, max: 5 }];
   // Backstop against guessing the real username from many addresses. Only the configured username
   // gets a key, so junk usernames cannot grow the table.
@@ -32,7 +30,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   if (safeEqual(userKey, config.username.toLowerCase())) limits.push({ key: `user:${userKey}`, max: 20 });
 
   // Reserve the attempt before the slow check, so parallel requests cannot bypass the limit.
-  if (!(await reserveAttempt(limits))) {
+  if (!reserveAttempt(limits)) {
     return { error: "יותר מדי ניסיונות כושלים. נסו שוב בעוד 15 דקות.", username };
   }
 
@@ -43,7 +41,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     return { error: "שם המשתמש או הסיסמה שגויים.", username };
   }
 
-  await clearFailures(limits);
+  clearFailures(limits);
   await repairRevocationFile();
   await setSessionCookie(await createSessionToken(config.username, config.sessionSecret));
   redirect("/dashboard");
