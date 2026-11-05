@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 
 // Your own data lives in a JSON file on the server, outside git (see .gitignore: /data/).
@@ -24,6 +24,7 @@ export type Employee = {
   name: string;
   target: number; // monthly sales target, ₪ (0 = none)
   commissionRate: number; // percent, e.g. 6.25
+  archived?: boolean; // left the business: hidden from forms, sales history kept
   createdAt: string;
 };
 
@@ -80,17 +81,59 @@ export async function readStore(): Promise<Store> {
   }
 }
 
+// Daily copies of the data file, kept beside it in backups/ (gitignored with /data/).
+export const BACKUP_DIR = path.join(path.dirname(DATA_FILE), "backups");
+const KEEP_BACKUPS = 30;
+const BACKUP_RE = /^finance-\d{4}-\d{2}-\d{2}\.json$/;
+
+/** Before the first change of each day, copies the current file to backups/finance-YYYY-MM-DD.json. */
+async function dailyBackup() {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+  const target = path.join(BACKUP_DIR, `finance-${day}.json`);
+  await mkdir(/*turbopackIgnore: true*/ BACKUP_DIR, { recursive: true, mode: 0o700 });
+  try {
+    await copyFile(/*turbopackIgnore: true*/ DATA_FILE, target, 1 /* COPYFILE_EXCL: keep the first copy of the day */);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EEXIST" || code === "ENOENT") return; // already backed up today, or nothing to back up yet
+    throw err;
+  }
+  const old = (await readdir(/*turbopackIgnore: true*/ BACKUP_DIR)).filter((f) => BACKUP_RE.test(f)).sort().reverse().slice(KEEP_BACKUPS);
+  await Promise.all(old.map((f) => unlink(/*turbopackIgnore: true*/ path.join(BACKUP_DIR, f)).catch(() => undefined)));
+}
+
+/** Writes to a temp file, flushes it to disk, then renames over the real file (atomic replace). */
+async function writeDurable(file: string, data: string) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  const fh = await open(/*turbopackIgnore: true*/ tmp, "w", 0o600);
+  try {
+    await fh.writeFile(data);
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
+  await rename(/*turbopackIgnore: true*/ tmp, file);
+}
+
 // Serialise writes so two quick submissions cannot overwrite each other.
 let queue: Promise<unknown> = Promise.resolve();
 
-export function updateStore<T>(fn: (s: Store) => T): Promise<T> {
+/**
+ * Runs fn on a fresh copy of the data and saves it. Pass { beforeDelete: true } for deletions:
+ * the file as it was just before is also kept in backups/finance-before-last-delete.json.
+ */
+export function updateStore<T>(fn: (s: Store) => T, opts: { beforeDelete?: boolean } = {}): Promise<T> {
   const run = queue.then(async () => {
     const store = await readStore();
     const result = fn(store);
     await mkdir(/*turbopackIgnore: true*/ path.dirname(DATA_FILE), { recursive: true, mode: 0o700 });
-    const tmp = `${DATA_FILE}.${process.pid}.tmp`;
-    await writeFile(/*turbopackIgnore: true*/ tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
-    await rename(/*turbopackIgnore: true*/ tmp, DATA_FILE); // atomic replace
+    await dailyBackup();
+    if (opts.beforeDelete) {
+      await copyFile(/*turbopackIgnore: true*/ DATA_FILE, path.join(BACKUP_DIR, "finance-before-last-delete.json")).catch((err) => {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      });
+    }
+    await writeDurable(DATA_FILE, JSON.stringify(store, null, 2));
     return result;
   });
   queue = run.catch(() => undefined);

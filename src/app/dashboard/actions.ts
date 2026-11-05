@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/session";
 import { newId, updateStore, type EntryType } from "@/lib/store";
+import { LOAN_CATEGORY, SALARY_CATEGORY } from "@/lib/data";
 
 export type FormState = { ok?: boolean; error?: string; nonce?: number } | undefined;
 
@@ -46,6 +47,9 @@ export async function addEntry(_prev: FormState, fd: FormData): Promise<FormStat
   if (!date) return { error: "יש לבחור תאריך תקין." };
   if (fd.has("person") && !person) return { error: "יש לבחור או לכתוב שם עובד." };
   if (!category) return { error: type === "income" ? "יש לבחור או לכתוב מקור הכנסה." : "יש לבחור או לכתוב קטגוריה." };
+  // These names are used by the salaries page and by automatic loan repayments.
+  if (category === SALARY_CATEGORY && !fd.has("person")) return { error: "משכורות נרשמות בעמוד משכורות. בחרו שם קטגוריה אחר." };
+  if (category === LOAN_CATEGORY) return { error: "החזרי הלוואות מחושבים אוטומטית מעמוד הלוואות. בחרו שם קטגוריה אחר." };
   if (amount === null) return { error: "יש להזין סכום חיובי (עד שתי ספרות אחרי הנקודה)." };
 
   await updateStore((s) => {
@@ -59,7 +63,7 @@ export async function deleteEntry(fd: FormData) {
   const id = String(fd.get("id") ?? "");
   await updateStore((s) => {
     s.entries = s.entries.filter((e) => e.id !== id);
-  });
+  }, { beforeDelete: true });
   revalidatePath("/dashboard", "layout");
 }
 
@@ -96,12 +100,25 @@ export async function updateEmployee(_prev: FormState, fd: FormData): Promise<Fo
   return done();
 }
 
+/** Deletes an agent only if they have no sales; otherwise past months' income would change. Archive them instead. */
 export async function deleteEmployee(fd: FormData) {
   await requireSession();
   const id = String(fd.get("id") ?? "");
   await updateStore((s) => {
+    if (s.sales.some((x) => x.employeeId === id)) return;
     s.employees = s.employees.filter((e) => e.id !== id);
-    s.sales = s.sales.filter((x) => x.employeeId !== id);
+  }, { beforeDelete: true });
+  revalidatePath("/dashboard", "layout");
+}
+
+/** Archive (left the business) or restore an agent. Their sales stay in every month's totals. */
+export async function setEmployeeArchived(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  const archived = fd.get("archived") === "1";
+  await updateStore((s) => {
+    const e = s.employees.find((x) => x.id === id);
+    if (e) e.archived = archived || undefined;
   });
   revalidatePath("/dashboard", "layout");
 }
@@ -117,7 +134,7 @@ export async function addSale(_prev: FormState, fd: FormData): Promise<FormState
   if (amount === null) return { error: "יש להזין סכום מכירה חיובי." };
 
   const ok = await updateStore((s) => {
-    if (!s.employees.some((e) => e.id === employeeId)) return false;
+    if (!s.employees.some((e) => e.id === employeeId && !e.archived)) return false;
     s.sales.push({ id: newId(), employeeId, date, amount, note: note || undefined, createdAt: new Date().toISOString() });
     return true;
   });
@@ -130,7 +147,7 @@ export async function deleteSale(fd: FormData) {
   const id = String(fd.get("id") ?? "");
   await updateStore((s) => {
     s.sales = s.sales.filter((x) => x.id !== id);
-  });
+  }, { beforeDelete: true });
   revalidatePath("/dashboard", "layout");
 }
 
@@ -159,7 +176,7 @@ export async function deleteLoan(fd: FormData) {
   const id = String(fd.get("id") ?? "");
   await updateStore((s) => {
     s.loans = s.loans.filter((l) => l.id !== id);
-  });
+  }, { beforeDelete: true });
   revalidatePath("/dashboard", "layout");
 }
 
@@ -197,6 +214,6 @@ export async function deleteOrder(fd: FormData) {
   const id = String(fd.get("id") ?? "");
   await updateStore((s) => {
     s.orders = s.orders.filter((o) => o.id !== id);
-  });
+  }, { beforeDelete: true });
   revalidatePath("/dashboard", "layout");
 }

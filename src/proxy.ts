@@ -22,12 +22,10 @@ async function isValid(token: string | undefined) {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const authed = await isValid(request.cookies.get(COOKIE)?.value);
-
-  if (pathname === "/login") {
-    return authed ? NextResponse.redirect(new URL("/dashboard", request.url)) : NextResponse.next();
-  }
-  if (!authed) {
+  // /login is always reachable. The page itself sends signed-in users on (it can also see logouts,
+  // which this file cannot), so a revoked cookie never causes a redirect loop.
+  if (pathname === "/login") return NextResponse.next();
+  if (!(await isValid(request.cookies.get(COOKIE)?.value))) {
     const url = new URL("/login", request.url);
     return NextResponse.redirect(url);
   }

@@ -508,3 +508,6 @@ table.data td.wrap { white-space: normal; min-width: 120px; }
 }
 .login-side .login-quote { color: #fff; margin: 0; }
 @media (max-width: 760px) { .title-block h1 { font-size: 22px; white-space: nowrap; } }
+
+/* Archived sales agents (left the business): kept for history, shown quieter */
+.data tr.archived td { opacity: .62; }

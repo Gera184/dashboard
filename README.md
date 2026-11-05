@@ -20,7 +20,13 @@ income by source, expenses by category and a daily/weekly chart.
 
 A single JSON file on the server: `data/finance.json` inside the project folder by default, or the path in the `DATA_FILE` env var.
 `/data/` is in `.gitignore`, so it is **never committed**. The file is written atomically with owner-only permissions (0600).
-Back it up by copying that file. To start over, stop the server and delete it.
+Automatic backups go to `data/backups/` (beside the data file): the first change of each day saves a copy of the
+file as it was (`finance-YYYY-MM-DD.json`, last 30 days kept), and every delete first saves
+`finance-before-last-delete.json`. To restore, stop the server and copy a backup over `finance.json`.
+To start over, stop the server and delete the file.
+
+Sales agents who leave can be **archived** on the agents page: they disappear from the sales form, and their sales stay
+in every past month. An agent can only be deleted while they have no sales.
 
 ## Run locally
 
@@ -30,10 +36,12 @@ cp .env.example .env.local
 npm run hash-password          # prompts for the admin password, prints ADMIN_PASSWORD_HASH=...
 openssl rand -base64 48        # paste as SESSION_SECRET
 # edit .env.local, then:
-npm run dev                    # http://localhost:3000
+npm run dev                    # http://localhost:3000 (this computer only)
 ```
 
-Production: `npm run build && npm start` (serve behind HTTPS).
+`npm run dev` and `npm start` listen on `127.0.0.1` only, so other devices on the Wi-Fi cannot reach the app.
+For access from elsewhere, put it behind HTTPS (for example Tailscale) rather than opening the port. If a reverse
+proxy is in front, set `TRUST_PROXY=1` so the login limit uses the real client address.
 
 ## The single administrator account
 
@@ -48,7 +56,8 @@ There is exactly one user, defined only by server-side environment variables:
 
 If any required variable is missing the app fails closed: nobody can log in.
 There is no registration page, no second user and no demo bypass.
-To change the password, generate a new hash and restart. To sign everyone out, rotate `SESSION_SECRET`.
+To change the password, generate a new hash and restart. Logging out ends every session (also copies of the cookie);
+rotating `SESSION_SECRET` does the same.
 
 ## How access is enforced (server-side)
 
@@ -56,7 +65,10 @@ To change the password, generate a new hash and restart. To sign everyone out, r
 - Every protected layout/page/server action also calls `requireSession()` (`src/lib/auth/session.ts`), so protection does not depend on the proxy alone.
 - Login is a Server Action: password checked with scrypt + constant-time comparison; username compared in constant time.
 - Session = HS256-signed JWT (8h expiry) in an `httpOnly`, `SameSite=Lax` cookie, `Secure` in production. The token is checked against the configured admin username on each request.
-- Failed logins are rate-limited (5 per 15 min per IP and per username).
+- Failed logins are rate-limited: 5 per 15 min per client address (taken from `X-Forwarded-For` only when `TRUST_PROXY=1`),
+  and 20 per 15 min for the admin username from all addresses. Attempts are counted before the password check, and
+  locks cannot be flushed out by flooding.
+- Logout writes a cut-off time to `data/session.json`; tokens issued before it are rejected.
 - Security headers: `X-Frame-Options: DENY`, `nosniff`, HSTS, strict referrer policy; `noindex`.
 
 ## Known limitations

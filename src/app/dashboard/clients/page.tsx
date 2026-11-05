@@ -24,7 +24,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
       </section>
       <section className="card" aria-labelledby="ord-list-t">
         <div className="card-head">
-          <h2 id="ord-list-t">הזמנות ב{monthLabel(month)}</h2>
+          <h2 id="ord-list-t">הזמנות ותשלומים ב{monthLabel(month)}</h2>
           <div className="pills">
             <span className="total-pill income">שילמו <strong className="num">{st.paidClients} מתוך {st.clients}</strong> לקוחות</span>
             <span className="total-pill income">שולם <strong className="num">{formatILS(st.paidAmount)}</strong></span>
@@ -32,7 +32,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           </div>
         </div>
         {list.length === 0 ? (
-          <Empty text="אין הזמנות בחודש הזה." />
+          <Empty text="אין הזמנות פתוחות או תשלומים בחודש הזה." />
         ) : (
           <div className="table-scroll">
             <table className="data">

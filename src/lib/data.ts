@@ -55,9 +55,18 @@ export const formatDate = (iso: string) => {
 
 /** Months that have data, newest first, always including the current month. */
 export function availableMonths(store: Store) {
-  const set = new Set<string>([currentMonth()]);
+  const now = currentMonth();
+  const set = new Set<string>([now]);
   for (const e of store.entries) set.add(monthOf(e.date));
   for (const s of store.sales) set.add(monthOf(s.date));
+  for (const o of store.orders) {
+    set.add(monthOf(o.date));
+    if (o.paidDate) set.add(monthOf(o.paidDate));
+  }
+  // Loan repayments, up to the current month (future months would flood the list).
+  for (const l of store.loans) {
+    for (let i = 0, key = monthOf(l.firstPayment); i < l.payments && key <= now; i++, key = shiftMonth(key, 1)) set.add(key);
+  }
   return [...set].sort().reverse();
 }
 
@@ -115,28 +124,36 @@ export function loanRows(store: Store, month: string): LoanRow[] {
 }
 
 // ---------- Orders ----------
+const paidIn = (o: Order, month: string) => !!o.paidDate && monthOf(o.paidDate) === month;
+/** Not yet paid at the end of `month` (paid later, or not at all). */
+const openAt = (o: Order, month: string) => !o.paidDate || monthOf(o.paidDate) > month;
+
+/** Orders that matter in `month`: paid during it, or placed by its end and still open at its end. */
+const relevantOrders = (store: Store, month: string) =>
+  store.orders.filter((o) => paidIn(o, month) || (monthOf(o.date) <= month && openAt(o, month)));
+
 export function ordersFor(store: Store, month: string) {
-  return store.orders
-    .filter((o) => monthOf(o.date) === month || (o.paidDate && monthOf(o.paidDate) === month))
-    .sort((a, b) => Number(!!a.paidDate) - Number(!!b.paidDate) || b.date.localeCompare(a.date));
+  return relevantOrders(store, month).sort(
+    (a, b) => Number(!openAt(a, month)) - Number(!openAt(b, month)) || b.date.localeCompare(a.date),
+  );
 }
 
-/** Orders placed this month: how many clients paid and how much is still open. */
+/** Payments made during `month` (by payment date) and what is still open at its end. */
 export function orderStats(store: Store, month: string) {
-  const placed = store.orders.filter((o) => monthOf(o.date) === month);
-  const paid = placed.filter((o) => o.paidDate);
-  const clients = new Set(placed.map((o) => o.client));
-  const paidClients = new Set(placed.filter((o) => o.paidDate).map((o) => o.client));
-  // a client counts as paid only when all their orders this month are paid
-  for (const o of placed) if (!o.paidDate) paidClients.delete(o.client);
+  const relevant = relevantOrders(store, month);
+  const paid = relevant.filter((o) => paidIn(o, month));
+  const open = relevant.filter((o) => openAt(o, month));
+  // a client counts as paid when they paid this month and have nothing left open
+  const openClients = new Set(open.map((o) => o.client));
+  const paidClients = new Set(paid.map((o) => o.client).filter((c) => !openClients.has(c)));
   return {
-    orders: placed.length,
+    orders: relevant.length,
     paidOrders: paid.length,
-    clients: clients.size,
+    clients: new Set(relevant.map((o) => o.client)).size,
     paidClients: paidClients.size,
     paidAmount: round2(sumBy(paid, (o) => o.amount)),
-    openAmount: round2(sumBy(placed.filter((o) => !o.paidDate), (o) => o.amount)),
-    unpaid: placed.filter((o) => !o.paidDate).sort((a, b) => a.date.localeCompare(b.date)) as Order[],
+    openAmount: round2(sumBy(open, (o) => o.amount)),
+    unpaid: open.sort((a, b) => a.date.localeCompare(b.date)) as Order[],
   };
 }
 export type OrderStats = ReturnType<typeof orderStats>;
@@ -179,7 +196,8 @@ const pctChange = (now: number, before: number) =>
 
 export type EmployeeRow = Employee & { sales: number; commission: number; progress: number | null; salesCount: number };
 
-export function employeeRows(store: Store, month: string): EmployeeRow[] {
+/** Active agents, plus archived ones who have sales in `month` (so past months stay complete). */
+export function employeeRows(store: Store, month: string, { includeArchived = false } = {}): EmployeeRow[] {
   return store.employees
     .map((e) => {
       const mine = store.sales.filter((s) => s.employeeId === e.id && monthOf(s.date) === month);
@@ -192,6 +210,7 @@ export function employeeRows(store: Store, month: string): EmployeeRow[] {
         progress: e.target > 0 ? sales / e.target : null,
       };
     })
+    .filter((r) => includeArchived || !r.archived || r.salesCount > 0)
     .sort((a, b) => b.sales - a.sales || a.name.localeCompare(b.name, "he"));
 }
 

@@ -9,3 +9,7 @@ next-env.d.ts
 # Your own financial data (never commit)
 /data/
 *.tmp
+# Plaintext login notes must never reach the (public) repo
+ADMIN-LOGIN.txt
+*LOGIN*.txt
+*.pem
