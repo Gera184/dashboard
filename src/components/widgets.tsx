@@ -1,12 +1,13 @@
 import Link from "next/link";
 import {
-  ArrowDown, ArrowUp, Building2, Car, ChartColumn, CircleMinus, CirclePlus, Coins, Ellipsis, Megaphone,
-  Banknote, Landmark, Monitor, Percent, ReceiptText, Truck, Users, UsersRound,
+  ArrowDown, ArrowUp, Building2, Car, CircleMinus, CirclePlus, Ellipsis, Megaphone,
+  Banknote, Landmark, Monitor, Percent, Truck, Users, UsersRound,
 } from "lucide-react";
 import type { Summary } from "@/lib/data";
 import { formatILS, formatPercent, formatSignedPercent } from "@/lib/format";
 import { TONE_HEX } from "@/lib/tones";
 import { Empty } from "./empty";
+import { CountUp } from "./count-up";
 
 export { Empty };
 
@@ -17,33 +18,64 @@ function Change({ value, goodWhenUp }: { value: number | null; goodWhenUp: boole
   const Icon = up ? ArrowUp : ArrowDown;
   return (
     <span className={`kpi-change ${good ? "up-good" : "up-bad"}`}>
-      <Icon size={15} strokeWidth={2.6} aria-hidden />
+      <Icon size={13} strokeWidth={2.6} aria-hidden />
       <span className="num" dir="ltr">{formatSignedPercent(value)}</span>
     </span>
   );
 }
 
-export function SummaryCards({ s }: { s: Summary }) {
-  const cards = [
-    { key: "income", label: "ברוטו החודש (הכנסות)", value: s.totals.income, change: s.changes.income, goodWhenUp: true, icon: ChartColumn, tone: "green" },
-    { key: "expense", label: "הוצאות החודש", value: s.totals.expenses, change: s.changes.expenses, goodWhenUp: false, icon: ReceiptText, tone: "red" },
-    { key: "profit", label: "נטו החודש (אחרי הוצאות)", value: s.totals.profit, change: s.changes.profit, goodWhenUp: true, icon: Coins, tone: s.totals.profit < 0 ? "red" : "green" },
-  ] as const;
+function Sparkline({ points }: { points: number[] }) {
+  const W = 1000, H = 92, pad = 10;
+  const max = Math.max(...points), min = Math.min(0, ...points);
+  const span = max - min || 1;
+  // Time runs right to left, like the other charts on this RTL page: oldest month on the right.
+  const xy = points.map((v, i) => [W - (i * W) / (points.length - 1), pad + (1 - (v - min) / span) * (H - pad * 2)] as const);
+  const line = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const area = `${line} L0,${H} L${W},${H} Z`;
   return (
-    <section className="kpis" aria-label={`סיכום ${s.label}`}>
-      {cards.map((c) => (
-        <article key={c.key} className={`card kpi ${c.key}`}>
-          <div style={{ zIndex: 1 }}>
-            <div className="kpi-label">{c.label}</div>
-            <div className="kpi-value num">{formatILS(c.value)}</div>
-            <Change value={c.change} goodWhenUp={c.goodWhenUp} />
-            <span className="kpi-sub">{s.hasPrev ? "לעומת החודש הקודם" : "אין נתונים לחודש הקודם"}</span>
+    <svg className="hero-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden>
+      <defs>
+        <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#7fd8b8" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#7fd8b8" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path className="spark-area" d={area} fill="url(#spark-fill)" />
+      <path className="spark-line" d={line} fill="none" stroke="#7fd8b8" strokeWidth="2" vectorEffect="non-scaling-stroke" pathLength={1} strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** The month at a glance: net as the headline figure, gross and expenses beside it, and twelve months of net underneath. */
+export function SummaryCards({ s }: { s: Summary }) {
+  const net = s.totals.profit;
+  const sub = s.hasPrev ? "לעומת החודש הקודם" : "אין נתונים לחודש הקודם";
+  return (
+    <section className="hero" aria-label={`סיכום ${s.label}`}>
+      <div className="hero-grid">
+        <div className="hero-rise">
+          <div className="hero-label">נטו החודש, אחרי הוצאות <span className="chip-month">{s.label}</span></div>
+          <strong className={`hero-value num${net < 0 ? " neg" : ""}`}><CountUp value={net} /></strong>
+          <div className="hero-meta">
+            <Change value={s.changes.profit} goodWhenUp />
+            <span className="kpi-sub">{sub}</span>
           </div>
-          <span className={`kpi-icon ${c.tone}`} aria-hidden>
-            <c.icon size={28} />
-          </span>
-        </article>
-      ))}
+        </div>
+        <div className="hero-side hero-rise d1">
+          <div className="hero-stat">
+            <span className="hero-stat-label"><i style={{ background: "#7fd8b8" }} />ברוטו (הכנסות)</span>
+            <strong className="hero-stat-value num"><CountUp value={s.totals.income} /></strong>
+            <Change value={s.changes.income} goodWhenUp />
+          </div>
+          <div className="hero-stat">
+            <span className="hero-stat-label"><i style={{ background: "#ff9a8f" }} />הוצאות</span>
+            <strong className="hero-stat-value num"><CountUp value={s.totals.expenses} /></strong>
+            <Change value={s.changes.expenses} goodWhenUp={false} />
+          </div>
+        </div>
+      </div>
+      <Sparkline points={s.cashFlow.map((m) => m.income - m.expenses)} />
+      <span className="hero-spark-cap">נטו ב-12 החודשים האחרונים</span>
     </section>
   );
 }
@@ -112,8 +144,8 @@ export function ExpenseByCategory({ s }: { s: Summary }) {
             const hex = TONE_HEX[c.tone];
             return (
               <li key={c.name}>
-                <span className="cat-icon" style={{ background: `${hex}1f`, color: hex }} aria-hidden>
-                  <Icon size={16} />
+                <span className="cat-icon" style={{ background: `${hex}17`, color: hex }} aria-hidden>
+                  <Icon size={16} strokeWidth={1.8} />
                 </span>
                 <span>{c.name}</span>
                 <span className="amount num">{formatILS(c.amount)}</span>
@@ -163,7 +195,7 @@ export function EmployeesTable({ s }: { s: Summary }) {
 
 export function Progress({ value }: { value: number | null }) {
   if (value === null) return <span className="muted">ללא יעד</span>;
-  const color = value >= 1 ? "#16a34a" : value >= 0.8 ? "#d9932a" : "#f0567a";
+  const color = value >= 1 ? "#b0812f" : value >= 0.8 ? "#138a62" : "#3f6fd6";
   return (
     <div className="progress">
       <span className="progress-track" aria-hidden>
@@ -191,7 +223,7 @@ export function MonthStats({ s }: { s: Summary }) {
     <section className="mini-kpis" aria-label="נתונים נוספים לחודש">
       {items.map((it) => (
         <Link key={it.label} href={it.href} className="card mini-kpi">
-          <span className="mini-icon" style={{ background: `${TONE_HEX[it.tone]}1f`, color: TONE_HEX[it.tone] }} aria-hidden><it.icon size={20} /></span>
+          <span className="mini-icon" style={{ background: `${TONE_HEX[it.tone]}17`, color: TONE_HEX[it.tone] }} aria-hidden><it.icon size={19} strokeWidth={1.8} /></span>
           <span>
             <span className="mini-label">{it.label}</span>
             <strong className="mini-value num">{it.value}</strong>

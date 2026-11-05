@@ -33,7 +33,7 @@ export function ExpenseDonut({ data, total, label, month }: { data: Slice[]; tot
         <div className="donut" aria-hidden>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={[...expenseCategories]} dataKey="amount" nameKey="name" innerRadius="66%" outerRadius="100%" startAngle={90} endAngle={-270} paddingAngle={1.5} cornerRadius={4} stroke="#fff" strokeWidth={2} isAnimationActive={false}>
+              <Pie data={[...expenseCategories]} dataKey="amount" nameKey="name" innerRadius="72%" outerRadius="100%" startAngle={90} endAngle={-270} paddingAngle={2} cornerRadius={6} stroke="#fff" strokeWidth={3} isAnimationActive={false}>
                 {expenseCategories.map((c) => <Cell key={c.name} fill={TONE_HEX[c.tone]} />)}
               </Pie>
               <Tooltip content={<ChartTooltip />} />
