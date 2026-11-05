@@ -2,18 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
-  Bell, Briefcase, Calendar, ChartNoAxesColumn, ChevronDown, CircleMinus, CirclePlus, FileText,
-  Files, Headset, House, LogOut, Menu, Settings, UserRound, Users, UsersRound, X,
+  Banknote, Bell, Calendar, ChartNoAxesColumn, ChevronDown, CircleMinus, CirclePlus, House, Landmark,
+  LogOut, Menu, UserRound, Users, UsersRound, X,
 } from "lucide-react";
 import { NAV } from "./nav";
-import { notifications, PERIOD } from "@/lib/data";
 import { logout } from "@/app/login/actions";
 
 const ICONS = {
-  house: House, income: CirclePlus, expenses: CircleMinus, reports: FileText, employees: Users,
-  clients: UsersRound, projects: Briefcase, documents: Files, settings: Settings,
+  house: House, income: CirclePlus, expenses: CircleMinus, salaries: Banknote, loans: Landmark,
+  employees: Users, clients: UsersRound,
 } as const;
 
 function usePopover() {
@@ -30,9 +29,15 @@ function usePopover() {
   return { open, setOpen, ref };
 }
 
-export function Shell({ displayName, children }: { displayName: string; children: React.ReactNode }) {
+type Month = { key: string; label: string };
+
+export function Shell({ displayName, months, children }: { displayName: string; months: Month[]; children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   const pathname = usePathname();
+  const params = useSearchParams();
+  const requested = params.get("month");
+  const month = months.find((m) => m.key === requested) ?? months[0];
+  const q = month.key === months[0].key && !requested ? "" : `?month=${month.key}`;
   useEffect(() => setNavOpen(false), [pathname]);
   useEffect(() => {
     if (!navOpen) return;
@@ -56,7 +61,7 @@ export function Shell({ displayName, children }: { displayName: string; children
         <nav className="nav">
           {NAV.map((item) => {
             const Icon = ICONS[item.icon];
-            const href = item.slug ? `/dashboard/${item.slug}` : "/dashboard";
+            const href = (item.slug ? `/dashboard/${item.slug}` : "/dashboard") + q;
             return (
               <Link key={item.slug} href={href} aria-current={current === item ? "page" : undefined}>
                 <Icon size={20} aria-hidden />
@@ -65,13 +70,6 @@ export function Shell({ displayName, children }: { displayName: string; children
             );
           })}
         </nav>
-        <div className="help-card">
-          <Headset size={26} aria-hidden />
-          <div>
-            <strong>צריך עזרה?</strong>
-            <span>צור קשר עם התמיכה</span>
-          </div>
-        </div>
       </aside>
       <div className="backdrop" onClick={() => setNavOpen(false)} aria-hidden />
 
@@ -87,7 +85,7 @@ export function Shell({ displayName, children }: { displayName: string; children
             </div>
           </div>
           <div className="top-actions">
-            <DatePicker />
+            <DatePicker months={months} selected={month} pathname={pathname} />
             <Notifications />
             <UserMenu displayName={displayName} />
           </div>
@@ -98,31 +96,27 @@ export function Shell({ displayName, children }: { displayName: string; children
   );
 }
 
-const MONTHS = [
-  { label: PERIOD.label, available: true },
-  { label: "1 – 30 בספטמבר 2026", available: false },
-  { label: "1 – 31 באוגוסט 2026", available: false },
-];
-
-function DatePicker() {
+function DatePicker({ months, selected, pathname }: { months: Month[]; selected: Month; pathname: string }) {
   const { open, setOpen, ref } = usePopover();
   return (
     <div className="anchor" ref={ref}>
-      <button className="date-btn" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} aria-label={`תקופה: ${PERIOD.label}`}>
+      <button className="date-btn" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} aria-label={`תקופה: ${selected.label}`}>
         <Calendar size={18} aria-hidden />
         <span className="sep date-text" aria-hidden />
-        <span className="date-text">{PERIOD.label}</span>
+        <span className="date-text">{selected.label}</span>
         <ChevronDown size={16} aria-hidden />
       </button>
       {open && (
         <div className="popover" role="menu">
-          <div className="popover-title">בחירת תקופה</div>
-          {MONTHS.map((m) => (
-            <button key={m.label} className="opt" role="menuitemradio" aria-checked={m.available} disabled={!m.available} onClick={() => setOpen(false)}>
-              <span>{m.label}</span>
-              {!m.available && <small>אין נתוני דוגמה</small>}
-            </button>
-          ))}
+          <div className="popover-title">בחירת חודש</div>
+          <div className="popover-scroll">
+            {months.map((m) => (
+              <Link key={m.key} href={`${pathname}?month=${m.key}`} className="opt" role="menuitemradio" aria-checked={m.key === selected.key} onClick={() => setOpen(false)}>
+                <span>{m.label}</span>
+              </Link>
+            ))}
+          </div>
+          <small className="popover-hint">מוצגים החודש הנוכחי וחודשים שיש בהם נתונים</small>
         </div>
       )}
     </div>
@@ -133,21 +127,13 @@ function Notifications() {
   const { open, setOpen, ref } = usePopover();
   return (
     <div className="anchor" ref={ref}>
-      <button className="icon-btn" onClick={() => setOpen(!open)} aria-label={`התראות (${notifications.length} חדשות)`} aria-expanded={open}>
+      <button className="icon-btn" onClick={() => setOpen(!open)} aria-label="התראות" aria-expanded={open}>
         <Bell size={21} />
-        <span className="dot" aria-hidden />
       </button>
       {open && (
         <div className="popover" role="dialog" aria-label="התראות">
           <div className="popover-title">התראות</div>
-          <ul>
-            {notifications.map((n) => (
-              <li key={n.title}>
-                <strong>{n.title}</strong>
-                <small>{n.detail} · {n.time}</small>
-              </li>
-            ))}
-          </ul>
+          <p className="muted" style={{ margin: 0, padding: "4px 10px 8px" }}>אין התראות חדשות.</p>
         </div>
       )}
     </div>

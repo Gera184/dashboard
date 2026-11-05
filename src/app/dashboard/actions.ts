@@ -1,0 +1,202 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { requireSession } from "@/lib/auth/session";
+import { newId, updateStore, type EntryType } from "@/lib/store";
+
+export type FormState = { ok?: boolean; error?: string; nonce?: number } | undefined;
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_AMOUNT = 1_000_000_000;
+
+const text = (fd: FormData, key: string, max: number) => String(fd.get(key) ?? "").trim().replace(/\s+/g, " ").slice(0, max);
+
+function parseAmount(raw: FormDataEntryValue | null, { allowZero = false } = {}) {
+  const s = String(raw ?? "").replace(/[₪,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n > MAX_AMOUNT || (!allowZero && n <= 0)) return null;
+  return n;
+}
+
+function parseDate(raw: FormDataEntryValue | null) {
+  const s = String(raw ?? "");
+  if (!DATE_RE.test(s)) return null;
+  const d = new Date(`${s}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return null;
+  const y = d.getUTCFullYear();
+  return y >= 2000 && y <= 2100 ? s : null;
+}
+
+const done = (): FormState => {
+  revalidatePath("/dashboard", "layout");
+  return { ok: true, nonce: Date.now() };
+};
+
+// ---------- Income / expense entries ----------
+export async function addEntry(_prev: FormState, fd: FormData): Promise<FormState> {
+  await requireSession();
+  const type = fd.get("type") as EntryType;
+  if (type !== "income" && type !== "expense") return { error: "סוג רשומה לא תקין." };
+  const date = parseDate(fd.get("date"));
+  const category = text(fd, "category", 60);
+  const amount = parseAmount(fd.get("amount"));
+  const note = text(fd, "note", 200);
+  const person = text(fd, "person", 60);
+  if (!date) return { error: "יש לבחור תאריך תקין." };
+  if (fd.has("person") && !person) return { error: "יש לבחור או לכתוב שם עובד." };
+  if (!category) return { error: type === "income" ? "יש לבחור או לכתוב מקור הכנסה." : "יש לבחור או לכתוב קטגוריה." };
+  if (amount === null) return { error: "יש להזין סכום חיובי (עד שתי ספרות אחרי הנקודה)." };
+
+  await updateStore((s) => {
+    s.entries.push({ id: newId(), type, date, category, amount, note: note || undefined, person: person || undefined, createdAt: new Date().toISOString() });
+  });
+  return done();
+}
+
+export async function deleteEntry(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  await updateStore((s) => {
+    s.entries = s.entries.filter((e) => e.id !== id);
+  });
+  revalidatePath("/dashboard", "layout");
+}
+
+// ---------- Employees ----------
+export async function addEmployee(_prev: FormState, fd: FormData): Promise<FormState> {
+  await requireSession();
+  const name = text(fd, "name", 60);
+  const target = parseAmount(fd.get("target") || "0", { allowZero: true });
+  const rate = parseAmount(fd.get("commissionRate") || "0", { allowZero: true });
+  if (!name) return { error: "יש להזין שם נציג." };
+  if (target === null) return { error: "יעד חודשי חייב להיות מספר (אפשר 0)." };
+  if (rate === null || rate > 100) return { error: "אחוז עמלה חייב להיות בין 0 ל-100." };
+
+  const dup = await updateStore((s) => {
+    if (s.employees.some((e) => e.name === name)) return true;
+    s.employees.push({ id: newId(), name, target, commissionRate: rate, createdAt: new Date().toISOString() });
+    return false;
+  });
+  if (dup) return { error: "כבר קיים נציג בשם הזה." };
+  return done();
+}
+
+export async function updateEmployee(_prev: FormState, fd: FormData): Promise<FormState> {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  const target = parseAmount(fd.get("target") || "0", { allowZero: true });
+  const rate = parseAmount(fd.get("commissionRate") || "0", { allowZero: true });
+  if (target === null) return { error: "יעד לא תקין." };
+  if (rate === null || rate > 100) return { error: "אחוז עמלה לא תקין." };
+  await updateStore((s) => {
+    const e = s.employees.find((x) => x.id === id);
+    if (e) Object.assign(e, { target, commissionRate: rate });
+  });
+  return done();
+}
+
+export async function deleteEmployee(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  await updateStore((s) => {
+    s.employees = s.employees.filter((e) => e.id !== id);
+    s.sales = s.sales.filter((x) => x.employeeId !== id);
+  });
+  revalidatePath("/dashboard", "layout");
+}
+
+// ---------- Sales (drive commissions) ----------
+export async function addSale(_prev: FormState, fd: FormData): Promise<FormState> {
+  await requireSession();
+  const employeeId = String(fd.get("employeeId") ?? "");
+  const date = parseDate(fd.get("date"));
+  const amount = parseAmount(fd.get("amount"));
+  const note = text(fd, "note", 200);
+  if (!date) return { error: "יש לבחור תאריך תקין." };
+  if (amount === null) return { error: "יש להזין סכום מכירה חיובי." };
+
+  const ok = await updateStore((s) => {
+    if (!s.employees.some((e) => e.id === employeeId)) return false;
+    s.sales.push({ id: newId(), employeeId, date, amount, note: note || undefined, createdAt: new Date().toISOString() });
+    return true;
+  });
+  if (!ok) return { error: "יש לבחור נציג." };
+  return done();
+}
+
+export async function deleteSale(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  await updateStore((s) => {
+    s.sales = s.sales.filter((x) => x.id !== id);
+  });
+  revalidatePath("/dashboard", "layout");
+}
+
+// ---------- Loans ----------
+export async function addLoan(_prev: FormState, fd: FormData): Promise<FormState> {
+  await requireSession();
+  const lender = text(fd, "lender", 60);
+  const amount = parseAmount(fd.get("amount"), { allowZero: true });
+  const monthlyPayment = parseAmount(fd.get("monthlyPayment"));
+  const firstPayment = parseDate(fd.get("firstPayment"));
+  const payments = Number(fd.get("payments"));
+  const note = text(fd, "note", 200);
+  if (!lender) return { error: "יש לכתוב ממי ההלוואה (בנק / גורם)." };
+  if (amount === null) return { error: "סכום ההלוואה לא תקין." };
+  if (monthlyPayment === null) return { error: "יש להזין החזר חודשי חיובי." };
+  if (!firstPayment) return { error: "יש לבחור תאריך תשלום ראשון." };
+  if (!Number.isInteger(payments) || payments < 1 || payments > 600) return { error: "מספר התשלומים חייב להיות בין 1 ל-600." };
+  await updateStore((s) => {
+    s.loans.push({ id: newId(), lender, amount, monthlyPayment, firstPayment, payments, note: note || undefined, createdAt: new Date().toISOString() });
+  });
+  return done();
+}
+
+export async function deleteLoan(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  await updateStore((s) => {
+    s.loans = s.loans.filter((l) => l.id !== id);
+  });
+  revalidatePath("/dashboard", "layout");
+}
+
+// ---------- Client orders ----------
+export async function addOrder(_prev: FormState, fd: FormData): Promise<FormState> {
+  await requireSession();
+  const client = text(fd, "client", 80);
+  const date = parseDate(fd.get("date"));
+  const amount = parseAmount(fd.get("amount"));
+  const paid = fd.get("paid") === "on";
+  const note = text(fd, "note", 200);
+  if (!client) return { error: "יש לכתוב שם לקוח." };
+  if (!date) return { error: "יש לבחור תאריך הזמנה." };
+  if (amount === null) return { error: "יש להזין סכום הזמנה חיובי." };
+  await updateStore((s) => {
+    s.orders.push({ id: newId(), client, date, amount, paidDate: paid ? date : undefined, note: note || undefined, createdAt: new Date().toISOString() });
+  });
+  return done();
+}
+
+export async function setOrderPaid(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  const paid = fd.get("paid") === "1";
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+  await updateStore((s) => {
+    const o = s.orders.find((x) => x.id === id);
+    if (o) o.paidDate = paid ? (today < o.date ? o.date : today) : undefined;
+  });
+  revalidatePath("/dashboard", "layout");
+}
+
+export async function deleteOrder(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  await updateStore((s) => {
+    s.orders = s.orders.filter((o) => o.id !== id);
+  });
+  revalidatePath("/dashboard", "layout");
+}

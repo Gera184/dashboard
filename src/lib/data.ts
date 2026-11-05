@@ -1,82 +1,265 @@
-// All figures are fictional sample data for October 2026. Nothing here comes from a real business.
-// Totals are derived from the detailed lists so every widget stays consistent.
-
-export const PERIOD = { label: "1 – 31 באוקטובר 2026", month: "אוקטובר 2026" };
+// Pure calculations over the data you enter. Nothing here is sample data.
+import type { Employee, Entry, Loan, Order, Sale, Store } from "./store";
 
 export type Tone = "blue" | "purple" | "pink" | "amber" | "teal" | "gray" | "green" | "red";
+export type CatIcon = "megaphone" | "users" | "percent" | "building" | "monitor" | "car" | "truck" | "bank" | "more";
 
-// Daily income/expenses, 1–31 October 2026. Salaries (₪18,000) are paid 9–11/10.
-const dailyIncome = [3600, 3800, 4850, 4000, 3600, 3050, 3200, 3550, 2550, 3050, 2600, 1900, 2900, 5050, 6150, 5050, 5900, 6450, 4700, 4100, 5650, 5550, 4900, 3900, 3850, 3100, 3900, 6250, 5750, 8450, 8650];
-const dailyExpenses = [1750, 1600, 1800, 1750, 1700, 1650, 1250, 1400, 7100, 7150, 7000, 1150, 1100, 1650, 1700, 1150, 1900, 2300, 2200, 2250, 1950, 1850, 1850, 1450, 1700, 1650, 1400, 1600, 1550, 1550, 1500];
+const PALETTE: Tone[] = ["blue", "purple", "pink", "amber", "teal", "gray"];
+const MAX_SLICES = 6;
+export const OTHER_LABEL = "אחר";
 
-export const daily = dailyIncome.map((income, i) => ({
-  label: `${i + 1}/10`,
-  income,
-  expenses: dailyExpenses[i],
-}));
+export const EXPENSE_CATEGORIES = [
+  "פרסום ומדיה", "משכורות", "עמלות עובדים", "הוצאות משרד", "שכירות",
+  "תוכנות ומנויים", "ספקים", "רכב ונסיעות", "הוצאות אחרות",
+];
+export const INCOME_SOURCES = ["לקוחות קיימים", "לקוחות חדשים", "קמפיינים ממומנים", "פרויקטים נוספים", "אחר"];
 
-const weekRanges: [number, number][] = [[1, 7], [8, 14], [15, 21], [22, 28], [29, 31]];
-export const weekly = weekRanges.map(([from, to]) => {
-  const slice = daily.slice(from - 1, to);
+const ICON_BY_CATEGORY: Record<string, CatIcon> = {
+  "פרסום ומדיה": "megaphone", "פרסום": "megaphone", "שיווק": "megaphone",
+  "משכורות": "users", "שכר": "users", "החזרי הלוואות": "bank",
+  "עמלות עובדים": "percent", "עמלות": "percent",
+  "הוצאות משרד": "building", "שכירות": "building", "משרד": "building",
+  "תוכנות ומנויים": "monitor", "תוכנות": "monitor",
+  "רכב ונסיעות": "car", "רכב": "car",
+  "ספקים": "truck",
+};
+
+// ---------- Dates ----------
+const TZ = "Asia/Jerusalem";
+export const todayISO = () => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+export const currentMonth = () => todayISO().slice(0, 7);
+export const monthOf = (date: string) => date.slice(0, 7);
+
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+export const isMonthKey = (s: unknown): s is string => typeof s === "string" && MONTH_RE.test(s);
+
+function shiftMonth(key: string, delta: number) {
+  const [y, m] = key.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+const daysIn = (key: string) => {
+  const [y, m] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+};
+const monthName = (key: string, month: "long" | "short") => {
+  const [y, m] = key.split("-").map(Number);
+  return new Intl.DateTimeFormat("he-IL", { month, timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)));
+};
+export const monthLabel = (key: string) => `${monthName(key, "long")} ${key.slice(0, 4)}`;
+export const periodLabel = (key: string) => `1 – ${daysIn(key)} ב${monthName(key, "long")} ${key.slice(0, 4)}`;
+export const formatDate = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${d}/${m}/${y}`;
+};
+
+/** Months that have data, newest first, always including the current month. */
+export function availableMonths(store: Store) {
+  const set = new Set<string>([currentMonth()]);
+  for (const e of store.entries) set.add(monthOf(e.date));
+  for (const s of store.sales) set.add(monthOf(s.date));
+  return [...set].sort().reverse();
+}
+
+/** The month to show: ?month=YYYY-MM if valid, otherwise the current month. */
+export function resolveMonth(param: string | string[] | undefined) {
+  const v = Array.isArray(param) ? param[0] : param;
+  return isMonthKey(v) ? v : currentMonth();
+}
+
+/** Default date for a new entry: today when viewing this month, else the 1st of the viewed month. */
+export const defaultDateFor = (month: string) => (month === currentMonth() ? todayISO() : `${month}-01`);
+
+// ---------- Aggregations ----------
+const sumBy = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((s, x) => s + f(x), 0);
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+export const entriesFor = (store: Store, month: string, type?: Entry["type"]) =>
+  store.entries
+    .filter((e) => monthOf(e.date) === month && (!type || e.type === type))
+    .sort((a, b) => (a.date === b.date ? b.createdAt.localeCompare(a.createdAt) : b.date.localeCompare(a.date)));
+
+export const SALES_PREFIX = "מכירות: ";
+export const SALARY_CATEGORY = "משכורות";
+export const LOAN_CATEGORY = "החזרי הלוואות";
+
+/** Manual entries that are not salaries (salaries have their own page). */
+export const plainEntriesFor = (store: Store, month: string, type: Entry["type"]) =>
+  entriesFor(store, month, type).filter((e) => !(type === "expense" && e.category === SALARY_CATEGORY));
+export const salariesFor = (store: Store, month: string) =>
+  entriesFor(store, month, "expense").filter((e) => e.category === SALARY_CATEGORY);
+
+// ---------- Loans ----------
+const monthDiff = (a: string, b: string) => (Number(a.slice(0, 4)) - Number(b.slice(0, 4))) * 12 + Number(a.slice(5, 7)) - Number(b.slice(5, 7));
+
+/** 1-based number of the repayment that falls in `month`, or 0 if none. */
+function paymentIndex(loan: Loan, month: string) {
+  const i = monthDiff(month, monthOf(loan.firstPayment)) + 1;
+  return i >= 1 && i <= loan.payments ? i : 0;
+}
+
+export type LoanRow = Loan & { paid: number; remaining: number; remainingAmount: number; dueThisMonth: boolean; endMonth: string };
+
+export function loanRows(store: Store, month: string): LoanRow[] {
+  return store.loans.map((l) => {
+    const elapsed = Math.max(0, Math.min(l.payments, monthDiff(month, monthOf(l.firstPayment)) + 1));
+    return {
+      ...l,
+      paid: elapsed,
+      remaining: l.payments - elapsed,
+      remainingAmount: round2((l.payments - elapsed) * l.monthlyPayment),
+      dueThisMonth: paymentIndex(l, month) > 0,
+      endMonth: shiftMonth(monthOf(l.firstPayment), l.payments - 1),
+    };
+  }).sort((a, b) => b.remainingAmount - a.remainingAmount);
+}
+
+// ---------- Orders ----------
+export function ordersFor(store: Store, month: string) {
+  return store.orders
+    .filter((o) => monthOf(o.date) === month || (o.paidDate && monthOf(o.paidDate) === month))
+    .sort((a, b) => Number(!!a.paidDate) - Number(!!b.paidDate) || b.date.localeCompare(a.date));
+}
+
+/** Orders placed this month: how many clients paid and how much is still open. */
+export function orderStats(store: Store, month: string) {
+  const placed = store.orders.filter((o) => monthOf(o.date) === month);
+  const paid = placed.filter((o) => o.paidDate);
+  const clients = new Set(placed.map((o) => o.client));
+  const paidClients = new Set(placed.filter((o) => o.paidDate).map((o) => o.client));
+  // a client counts as paid only when all their orders this month are paid
+  for (const o of placed) if (!o.paidDate) paidClients.delete(o.client);
   return {
-    label: `${from}–${to}/10`,
-    income: slice.reduce((s, d) => s + d.income, 0),
-    expenses: slice.reduce((s, d) => s + d.expenses, 0),
+    orders: placed.length,
+    paidOrders: paid.length,
+    clients: clients.size,
+    paidClients: paidClients.size,
+    paidAmount: round2(sumBy(paid, (o) => o.amount)),
+    openAmount: round2(sumBy(placed.filter((o) => !o.paidDate), (o) => o.amount)),
+    unpaid: placed.filter((o) => !o.paidDate).sort((a, b) => a.date.localeCompare(b.date)) as Order[],
   };
-});
+}
+export type OrderStats = ReturnType<typeof orderStats>;
 
-export const expenseCategories = [
-  { name: "פרסום ומדיה", amount: 24000, tone: "blue", icon: "megaphone" },
-  { name: "משכורות", amount: 18000, tone: "purple", icon: "users" },
-  { name: "עמלות עובדים", amount: 8500, tone: "pink", icon: "percent" },
-  { name: "הוצאות משרד", amount: 6200, tone: "amber", icon: "building" },
-  { name: "תוכנות ומנויים", amount: 4900, tone: "teal", icon: "monitor" },
-  { name: "הוצאות אחרות", amount: 6000, tone: "gray", icon: "more" },
-] as const;
+/** Everything that counts toward the totals: manual entries plus each agent's sales as income. */
+function ledger(store: Store, month: string): Entry[] {
+  const names = new Map(store.employees.map((e) => [e.id, e.name]));
+  const sales: Entry[] = store.sales
+    .filter((x) => monthOf(x.date) === month && names.has(x.employeeId))
+    .map((x) => ({ id: x.id, type: "income", date: x.date, category: `${SALES_PREFIX}${names.get(x.employeeId)}`, amount: x.amount, createdAt: x.createdAt }));
+  const loans: Entry[] = store.loans
+    .filter((l) => paymentIndex(l, month) > 0)
+    .map((l) => ({ id: l.id, type: "expense", date: `${month}-${String(Math.min(Number(l.firstPayment.slice(8)), daysIn(month))).padStart(2, "0")}`, category: LOAN_CATEGORY, amount: l.monthlyPayment, createdAt: l.createdAt }));
+  return [...entriesFor(store, month), ...sales, ...loans];
+}
 
-export const incomeSources = [
-  { name: "לקוחות קיימים", amount: 52000, tone: "blue" },
-  { name: "לקוחות חדשים", amount: 38000, tone: "purple" },
-  { name: "קמפיינים ממומנים", amount: 26000, tone: "pink" },
-  { name: "פרויקטים נוספים", amount: 14000, tone: "amber" },
-  { name: "אחר", amount: 10000, tone: "gray" },
-] as const;
+function monthTotals(store: Store, month: string) {
+  const list = ledger(store, month);
+  const income = round2(sumBy(list.filter((e) => e.type === "income"), (e) => e.amount));
+  const expenses = round2(sumBy(list.filter((e) => e.type === "expense"), (e) => e.amount));
+  return { income, expenses, profit: round2(income - expenses), count: list.length };
+}
 
-const sum = (xs: readonly { amount: number }[]) => xs.reduce((s, x) => s + x.amount, 0);
+export type Slice = { name: string; amount: number; tone: Tone; icon: CatIcon };
 
-export const totals = {
-  income: sum(incomeSources), // 140,000
-  expenses: sum(expenseCategories), // 67,600
-  get profit() {
-    return this.income - this.expenses; // 72,400
-  },
-};
+function groupByCategory(list: Entry[]): Slice[] {
+  const map = new Map<string, number>();
+  for (const e of list) map.set(e.category, (map.get(e.category) ?? 0) + e.amount);
+  let rows = [...map.entries()].map(([name, amount]) => ({ name, amount: round2(amount) })).sort((a, b) => b.amount - a.amount);
+  if (rows.length > MAX_SLICES) {
+    const head = rows.slice(0, MAX_SLICES - 1);
+    const rest = round2(sumBy(rows.slice(MAX_SLICES - 1), (r) => r.amount));
+    rows = [...head, { name: OTHER_LABEL, amount: rest }];
+  }
+  return rows.map((r, i) => ({ ...r, tone: PALETTE[i % PALETTE.length], icon: ICON_BY_CATEGORY[r.name] ?? "more" }));
+}
 
-export const cashFlow = [
-  { month: "אוג׳ 2026", income: 112400, expenses: 59800 },
-  { month: "ספט׳ 2026", income: 118600, expenses: 62600 },
-  { month: "אוק׳ 2026", income: totals.income, expenses: totals.expenses },
-];
+const pctChange = (now: number, before: number) =>
+  before === 0 ? null : Math.round(((now - before) / Math.abs(before)) * 100);
 
-const prev = cashFlow[1];
-const pct = (now: number, before: number) => Math.round(((now - before) / before) * 100);
-export const changes = {
-  income: pct(totals.income, prev.income), // +18%
-  expenses: pct(totals.expenses, prev.expenses), // +8%
-  profit: pct(totals.profit, prev.income - prev.expenses), // +29%
-};
+export type EmployeeRow = Employee & { sales: number; commission: number; progress: number | null; salesCount: number };
 
-// Commission = 6.25% of sales. Commissions sum to the ₪8,500 "עמלות עובדים" category.
-export const COMMISSION_RATE = 0.0625;
-export const employees = [
-  { name: "דניאל", sales: 44800, target: 50000 },
-  { name: "מאי", sales: 35200, target: 40000 },
-  { name: "רון", sales: 25600, target: 40000 },
-  { name: "יובל", sales: 30400, target: 30000 },
-].map((e) => ({ ...e, commission: Math.round(e.sales * COMMISSION_RATE), progress: e.sales / e.target }));
+export function employeeRows(store: Store, month: string): EmployeeRow[] {
+  return store.employees
+    .map((e) => {
+      const mine = store.sales.filter((s) => s.employeeId === e.id && monthOf(s.date) === month);
+      const sales = round2(sumBy(mine, (s) => s.amount));
+      return {
+        ...e,
+        sales,
+        salesCount: mine.length,
+        commission: round2((sales * e.commissionRate) / 100),
+        progress: e.target > 0 ? sales / e.target : null,
+      };
+    })
+    .sort((a, b) => b.sales - a.sales || a.name.localeCompare(b.name, "he"));
+}
 
-export const notifications = [
-  { title: "תקבול חדש מסטודיו אלפא", detail: "₪8,500 התקבלו בחשבון", time: "לפני שעה" },
-  { title: "יובל עבר את יעד החודש", detail: "101% מהיעד החודשי", time: "אתמול" },
-  { title: "תזכורת: דיווח מע״מ", detail: "יש להגיש עד 15/11/2026", time: "לפני יומיים" },
-];
+export const salesFor = (store: Store, month: string): Sale[] =>
+  store.sales
+    .filter((s) => monthOf(s.date) === month)
+    .sort((a, b) => (a.date === b.date ? b.createdAt.localeCompare(a.createdAt) : b.date.localeCompare(a.date)));
+
+export type Point = { label: string; income: number; expenses: number };
+
+export function summarize(store: Store, month: string) {
+  const totals = monthTotals(store, month);
+  const prevKey = shiftMonth(month, -1);
+  const prev = monthTotals(store, prevKey);
+  const hasPrev = prev.count > 0;
+  const m = Number(month.slice(5));
+
+  const list = ledger(store, month);
+  const days = daysIn(month);
+  const daily: Point[] = Array.from({ length: days }, (_, i) => ({ label: `${i + 1}/${m}`, income: 0, expenses: 0 }));
+  for (const e of list) {
+    const d = daily[Number(e.date.slice(8)) - 1];
+    if (!d) continue;
+    if (e.type === "income") d.income = round2(d.income + e.amount);
+    else d.expenses = round2(d.expenses + e.amount);
+  }
+  const weekly: Point[] = [];
+  for (let from = 1; from <= days; from += 7) {
+    const to = Math.min(from + 6, days);
+    const slice = daily.slice(from - 1, to);
+    weekly.push({
+      label: `${from}–${to}/${m}`,
+      income: round2(sumBy(slice, (d) => d.income)),
+      expenses: round2(sumBy(slice, (d) => d.expenses)),
+    });
+  }
+
+  const cashFlow = Array.from({ length: 12 }, (_, i) => i - 11).map((delta) => {
+    const key = shiftMonth(month, delta);
+    const t = monthTotals(store, key);
+    return { month: `${monthName(key, "short")} ${key.slice(0, 4)}`, income: t.income, expenses: t.expenses };
+  });
+
+  return {
+    month,
+    label: monthLabel(month),
+    totals,
+    hasPrev,
+    changes: hasPrev
+      ? { income: pctChange(totals.income, prev.income), expenses: pctChange(totals.expenses, prev.expenses), profit: pctChange(totals.profit, prev.profit) }
+      : { income: null, expenses: null, profit: null },
+    daily,
+    weekly,
+    expenseCategories: groupByCategory(list.filter((e) => e.type === "expense")),
+    incomeSources: groupByCategory(list.filter((e) => e.type === "income")),
+    cashFlow,
+    employees: employeeRows(store, month),
+    orders: orderStats(store, month),
+    salaries: round2(sumBy(salariesFor(store, month), (e) => e.amount)),
+    loanPayments: round2(sumBy(list.filter((e) => e.category === LOAN_CATEGORY && e.type === "expense"), (e) => e.amount)),
+  };
+}
+
+export type Summary = ReturnType<typeof summarize>;
+
+/** Category names to suggest in the form: presets first, then anything you have used before. */
+export function categorySuggestions(store: Store, type: Entry["type"]) {
+  const presets = type === "income" ? INCOME_SOURCES : EXPENSE_CATEGORIES.filter((c) => c !== SALARY_CATEGORY);
+  const used = store.entries.filter((e) => e.type === type && e.category !== SALARY_CATEGORY).map((e) => e.category);
+  return [...new Set([...presets, ...used])];
+}

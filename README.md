@@ -1,7 +1,26 @@
 # דשבורד פיננסי (Hebrew RTL financial dashboard)
 
 Next.js 16 (App Router) + React 19 + Recharts. Hebrew, right-to-left, amounts in ₪.
-All numbers are **fictional sample data** in `src/lib/data.ts` (October 2026). No external APIs or databases.
+The dashboard starts **empty**. You enter your own data in the app (behind the admin login):
+
+| Page | What you enter | How it counts |
+|---|---|---|
+| **נציגים ועמלות** `/dashboard/employees` | agents (monthly target, commission %) and each sale | sales = income (source "מכירות: <name>"); commission = sales × rate |
+| **הכנסות** `/dashboard/income` | any other income | income |
+| **הוצאות** `/dashboard/expenses` | date, category, amount | expense |
+| **משכורות** `/dashboard/salaries` | employee, date, salary cost | expense (category "משכורות") |
+| **הלוואות** `/dashboard/loans` | lender, amount, monthly repayment, number of payments, first payment | each month's repayment = expense, automatically |
+| **לקוחות והזמנות** `/dashboard/clients` | client orders, marked paid / unpaid | "clients who paid this month: X of Y" and open amount (not added to income, to avoid double counting with agent sales) |
+
+The main dashboard shows, for the month chosen in the header (`?month=YYYY-MM`): gross (total income), expenses and net,
+clients who paid, salaries and loan repayments, a 12-month income/expense chart, how much each agent brought in and their commission,
+income by source, expenses by category and a daily/weekly chart.
+
+## Where your data is stored
+
+A single JSON file on the server: `data/finance.json` inside the project folder by default, or the path in the `DATA_FILE` env var.
+`/data/` is in `.gitignore`, so it is **never committed**. The file is written atomically with owner-only permissions (0600).
+Back it up by copying that file. To start over, stop the server and delete it.
 
 ## Run locally
 
@@ -46,4 +65,6 @@ To change the password, generate a new hash and restart. To sign everyone out, r
 - Sessions are stateless; an individual session cannot be revoked before it expires except by rotating `SESSION_SECRET`.
 - No MFA. Add TOTP if the dashboard will ever hold real data.
 - `x-forwarded-for` is trusted for rate limiting; deploy behind a proxy that sets it (Vercel, Nginx, etc.).
-- Only October 2026 has sample data; the other sidebar pages are protected placeholders.
+- Commissions are not added to expenses automatically. If you pay them, add an expense in the "עמלות עובדים" category.
+- Loan repayments are a fixed monthly amount; interest changes are not modelled.
+- The JSON store is meant for a single server instance; use a real database before running several instances.
