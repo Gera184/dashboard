@@ -43,6 +43,23 @@ npm run dev                    # http://localhost:3000 (this computer only)
 For access from elsewhere, put it behind HTTPS (for example Tailscale) rather than opening the port. If a reverse
 proxy is in front, set `TRUST_PROXY=1` so the login limit uses the real client address.
 
+## Deploy to Vercel
+
+Vercel's disk is temporary, so a hosted copy keeps its data in a Redis database (Upstash, free tier) instead of `data/finance.json`.
+
+1. Import the GitHub repo at https://vercel.com/new (framework: Next.js, no build settings to change).
+2. In the Vercel project, open **Storage → Create / Connect Database → Upstash for Redis**, connect it to the project.
+   This sets `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically.
+3. In **Settings → Environment Variables**, add `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET`
+   (and optionally `ADMIN_DISPLAY_NAME`). Never commit these.
+4. Redeploy. Without a database the hosted app refuses to start saving rather than losing entries.
+
+In Redis the app keeps: the ledger (`finance:store`), a copy of the first state of each day for 31 days
+(`finance:backup:YYYY-MM-DD`), the copy before the last delete (`finance:backup:before-last-delete`),
+login lockout counters and the logout cut-off. Saves use a revision check, so two quick changes from
+different serverless instances cannot overwrite each other. On Vercel the login limiter trusts
+`X-Forwarded-For` automatically (Vercel sets it). Locally, with no Redis variables, everything stays in files as before.
+
 ## The single administrator account
 
 There is exactly one user, defined only by server-side environment variables:
@@ -73,7 +90,7 @@ rotating `SESSION_SECRET` does the same.
 
 ## Known limitations
 
-- The rate limiter is in-memory: it resets on restart and is not shared across multiple instances. Use Redis or your platform's WAF for multi-instance deployments.
+- Locally (no Redis) the rate limiter is in memory and resets on restart. Hosted with Redis it is shared and persistent.
 - Sessions are stateless; an individual session cannot be revoked before it expires except by rotating `SESSION_SECRET`.
 - No MFA. Add TOTP if the dashboard will ever hold real data.
 - `x-forwarded-for` is trusted for rate limiting; deploy behind a proxy that sets it (Vercel, Nginx, etc.).

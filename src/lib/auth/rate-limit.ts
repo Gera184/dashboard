@@ -1,6 +1,8 @@
 import "server-only";
+import { KEYS, kv } from "@/lib/kv";
 
-// In-memory login limiter. Per-process only; behind several instances use a shared store (e.g. Redis).
+// Login limiter. In Redis when a cloud database is connected (shared by every serverless instance),
+// otherwise in memory for the local single-process server.
 //
 // - An attempt is reserved synchronously *before* the slow password check, so parallel
 //   requests cannot all slip past the limit.
@@ -30,7 +32,16 @@ function live(key: string, now: number) {
  * Reserves one attempt on every key. Returns false (and reserves nothing) if any key is already
  * at its limit. Call clearFailures(keys) after a successful login; a failed one keeps the count.
  */
-export function reserveAttempt(limits: Limit[]): boolean {
+export async function reserveAttempt(limits: Limit[]): Promise<boolean> {
+  const redis = kv();
+  if (redis) {
+    const ok = await redis.eval(
+      RESERVE_SCRIPT,
+      limits.map((l) => KEYS.limit(l.key)),
+      [String(WINDOW_MS), ...limits.map((l) => String(l.max))],
+    );
+    return Number(ok) === 1;
+  }
   const now = Date.now();
   if (limits.some((l) => (live(l.key, now)?.count ?? 0) >= l.max)) return false;
   if (failures.size >= MAX_KEYS) prune(now);
@@ -43,6 +54,23 @@ export function reserveAttempt(limits: Limit[]): boolean {
   return true;
 }
 
-export function clearFailures(limits: Limit[]) {
+export async function clearFailures(limits: Limit[]) {
+  const redis = kv();
+  if (redis) {
+    await redis.del(...limits.map((l) => KEYS.limit(l.key)));
+    return;
+  }
   for (const l of limits) failures.delete(l.key);
 }
+
+// Atomic: refuse if any key is at its max, otherwise count one attempt on every key.
+// The window starts at the first failure (PX set only when the key is new), like the in-memory version.
+const RESERVE_SCRIPT = `
+for i, k in ipairs(KEYS) do
+  if tonumber(redis.call('GET', k) or '0') >= tonumber(ARGV[i + 1]) then return 0 end
+end
+for i, k in ipairs(KEYS) do
+  if redis.call('INCR', k) == 1 then redis.call('PEXPIRE', k, ARGV[1]) end
+end
+return 1
+`;

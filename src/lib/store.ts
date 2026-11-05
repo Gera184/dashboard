@@ -2,9 +2,11 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
 import path from "node:path";
+import { KEYS, kv } from "./kv";
 
 // Your own data lives in a JSON file on the server, outside git (see .gitignore: /data/).
 // Override the location with DATA_FILE, e.g. DATA_FILE=/Users/me/finance-data/finance.json
+// On a hosted deployment with a Redis database connected (see kv.ts), it lives there instead.
 
 export type EntryType = "income" | "expense";
 
@@ -64,17 +66,26 @@ const EMPTY: Store = { version: 1, entries: [], employees: [], sales: [], loans:
 
 export const DATA_FILE = process.env.DATA_FILE?.trim() || path.join(/*turbopackIgnore: true*/ process.cwd(), "data", "finance.json");
 
+function normalize(raw: Partial<Store>): Store {
+  return {
+    version: 1,
+    entries: Array.isArray(raw.entries) ? raw.entries : [],
+    employees: Array.isArray(raw.employees) ? raw.employees : [],
+    sales: Array.isArray(raw.sales) ? raw.sales : [],
+    loans: Array.isArray(raw.loans) ? raw.loans : [],
+    orders: Array.isArray(raw.orders) ? raw.orders : [],
+  };
+}
+
 export async function readStore(): Promise<Store> {
+  const redis = kv();
+  if (redis) {
+    const raw = await redis.get<string>(KEYS.store);
+    return raw == null ? structuredClone(EMPTY) : normalize(JSON.parse(raw) as Partial<Store>);
+  }
   try {
     const raw = JSON.parse(await readFile(/*turbopackIgnore: true*/ DATA_FILE, "utf8")) as Partial<Store>;
-    return {
-      version: 1,
-      entries: Array.isArray(raw.entries) ? raw.entries : [],
-      employees: Array.isArray(raw.employees) ? raw.employees : [],
-      sales: Array.isArray(raw.sales) ? raw.sales : [],
-      loans: Array.isArray(raw.loans) ? raw.loans : [],
-      orders: Array.isArray(raw.orders) ? raw.orders : [],
-    };
+    return normalize(raw);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return structuredClone(EMPTY);
     throw err; // never silently overwrite a file we could not parse
@@ -123,6 +134,8 @@ let queue: Promise<unknown> = Promise.resolve();
  * the file as it was just before is also kept in backups/finance-before-last-delete.json.
  */
 export function updateStore<T>(fn: (s: Store) => T, opts: { beforeDelete?: boolean } = {}): Promise<T> {
+  const redis = kv();
+  if (redis) return updateRedis(fn, opts);
   const run = queue.then(async () => {
     const store = await readStore();
     const result = fn(store);
@@ -138,6 +151,39 @@ export function updateStore<T>(fn: (s: Store) => T, opts: { beforeDelete?: boole
   });
   queue = run.catch(() => undefined);
   return run;
+}
+
+// Saves only if nobody else saved since we read (serverless instances do not share the queue above).
+// Also keeps the first copy of each day (30 days) and the copy before the last delete.
+const SAVE_SCRIPT = `
+local cur = redis.call('GET', KEYS[2])
+if (cur or '0') ~= ARGV[1] then return 0 end
+local old = redis.call('GET', KEYS[1])
+if old then
+  redis.call('SET', KEYS[3], old, 'NX', 'EX', 2678400)
+  if ARGV[3] == '1' then redis.call('SET', KEYS[4], old) end
+end
+redis.call('SET', KEYS[1], ARGV[2])
+redis.call('INCR', KEYS[2])
+return 1
+`;
+
+async function updateRedis<T>(fn: (s: Store) => T, opts: { beforeDelete?: boolean }): Promise<T> {
+  const redis = kv()!;
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const [raw, rev] = await redis.mget<(string | null)[]>(KEYS.store, KEYS.rev);
+    const store = raw == null ? structuredClone(EMPTY) : normalize(JSON.parse(raw) as Partial<Store>);
+    const result = fn(store);
+    const saved = await redis.eval(
+      SAVE_SCRIPT,
+      [KEYS.store, KEYS.rev, KEYS.backup(day), KEYS.beforeDelete],
+      [String(rev ?? "0"), JSON.stringify(store), opts.beforeDelete ? "1" : "0"],
+    );
+    if (Number(saved) === 1) return result;
+    await new Promise((r) => setTimeout(r, 30 + Math.random() * 70 * (attempt + 1)));
+  }
+  throw new Error("Could not save: too many changes at the same moment. Try again.");
 }
 
 export const newId = () => randomUUID();
