@@ -3,6 +3,7 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatCompact } from "@/lib/format";
 import { ChartTooltip } from "./tooltip";
+import { CHART } from "@/lib/tones";
 
 type Row = { month: string; income: number; expenses: number };
 
@@ -21,16 +22,16 @@ export function CashFlowChart({ data }: { data: Row[] }) {
       <div className="chart-box" style={{ height: 260 }} role="img" aria-label={`הכנסות והוצאות לפי חודש, ${data[0]?.month} עד ${data[data.length - 1]?.month}`}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} barGap={4} barCategoryGap="22%" margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
-            <CartesianGrid stroke="#eef1f6" vertical={false} />
-            <XAxis dataKey="month" reversed interval="preserveStartEnd" minTickGap={8} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} tick={{ fill: "#64748b", fontSize: 12 }} tickMargin={8} />
-            <YAxis orientation="right" domain={[0, "auto"]} tickFormatter={formatCompact} tickLine={false} axisLine={false} tick={{ fill: "#64748b", fontSize: 12 }} width={44} />
-            <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(148,163,184,0.12)" }} />
-            <Bar dataKey="income" name="הכנסות" fill="#16a34a" radius={[4, 4, 0, 0]} maxBarSize={26} />
-            <Bar dataKey="expenses" name="הוצאות" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={26} />
+            <CartesianGrid stroke={CHART.grid} vertical={false} />
+            <XAxis dataKey="month" reversed interval="preserveStartEnd" minTickGap={8} tickLine={false} axisLine={{ stroke: CHART.axis }} tick={{ fill: CHART.tick, fontSize: 12 }} tickMargin={8} />
+            <YAxis orientation="right" domain={[0, "auto"]} tickFormatter={formatCompact} tickLine={false} axisLine={false} tick={{ fill: CHART.tick, fontSize: 12 }} width={44} />
+            <Tooltip content={<ChartTooltip />} cursor={{ fill: CHART.cursor }} />
+            <Bar dataKey="income" name="הכנסות" fill={CHART.income} radius={[6, 6, 2, 2]} maxBarSize={22} />
+            <Bar dataKey="expenses" name="הוצאות" fill={CHART.expense} fillOpacity={0.85} radius={[6, 6, 2, 2]} maxBarSize={22} />
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="legend" style={{ marginTop: 8 }}>
+      <div className="legend" style={{ marginTop: 12 }}>
         <span><i className="sw sq tone-income" />הכנסות</span>
         <span><i className="sw sq tone-expense" />הוצאות</span>
       </div>

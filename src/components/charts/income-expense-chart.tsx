@@ -6,9 +6,10 @@ import type { Point } from "@/lib/data";
 import { formatILS } from "@/lib/format";
 import { formatCompact } from "@/lib/format";
 import { ChartTooltip } from "./tooltip";
+import { CHART } from "@/lib/tones";
 
-const INCOME = "#16a34a";
-const EXPENSE = "#ef4444";
+const INCOME = CHART.income;
+const EXPENSE = CHART.expense;
 
 export function IncomeExpenseChart({ daily, weekly, label, income, expenses }: { daily: Point[]; weekly: Point[]; label: string; income: number; expenses: number }) {
   const [mode, setMode] = useState<"daily" | "weekly">("daily");
@@ -23,7 +24,7 @@ export function IncomeExpenseChart({ daily, weekly, label, income, expenses }: {
         <h2 id={`${id}-t`}>הכנסות מול הוצאות</h2>
         <label className="select-btn">
           <span className="visually-hidden">תצוגה</span>
-          <select value={mode} onChange={(e) => setMode(e.target.value as "daily" | "weekly")} style={{ border: 0, background: "transparent", outline: "none", cursor: "pointer" }}>
+          <select value={mode} onChange={(e) => setMode(e.target.value as "daily" | "weekly")} style={{ border: 0, background: "transparent", outline: "none", cursor: "pointer", color: "inherit" }}>
             <option value="daily">לפי ימים</option>
             <option value="weekly">לפי שבועות</option>
           </select>
@@ -41,7 +42,7 @@ export function IncomeExpenseChart({ daily, weekly, label, income, expenses }: {
           <ComposedChart data={data} margin={{ top: 12, right: 4, left: 4, bottom: 0 }}>
             <defs>
               <linearGradient id={`${id}-inc`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={INCOME} stopOpacity={0.18} />
+                <stop offset="0%" stopColor={INCOME} stopOpacity={0.2} />
                 <stop offset="100%" stopColor={INCOME} stopOpacity={0.01} />
               </linearGradient>
               <linearGradient id={`${id}-exp`} x1="0" y1="0" x2="0" y2="1">
@@ -49,13 +50,13 @@ export function IncomeExpenseChart({ daily, weekly, label, income, expenses }: {
                 <stop offset="100%" stopColor={EXPENSE} stopOpacity={0.01} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="#eef1f6" vertical={false} />
-            <XAxis dataKey="label" reversed ticks={ticks} interval={mode === "daily" ? "preserveStartEnd" : 0} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} tick={{ fill: "#64748b", fontSize: 12 }} tickMargin={8} />
-            <YAxis orientation="right" domain={[0, "auto"]} tickFormatter={formatCompact} tickLine={false} axisLine={false} tick={{ fill: "#64748b", fontSize: 12 }} width={44} />
-            <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#94a3b8", strokeDasharray: "3 3" }} />
+            <CartesianGrid stroke={CHART.grid} vertical={false} />
+            <XAxis dataKey="label" reversed ticks={ticks} interval={mode === "daily" ? "preserveStartEnd" : 0} tickLine={false} axisLine={{ stroke: CHART.axis }} tick={{ fill: CHART.tick, fontSize: 12 }} tickMargin={8} />
+            <YAxis orientation="right" domain={[0, "auto"]} tickFormatter={formatCompact} tickLine={false} axisLine={false} tick={{ fill: CHART.tick, fontSize: 12 }} width={44} />
+            <Tooltip content={<ChartTooltip />} cursor={{ stroke: CHART.tick, strokeOpacity: 0.35, strokeDasharray: "3 3" }} />
             <Area type="monotone" dataKey="income" name="הכנסות" stroke="none" fill={`url(#${id}-inc)`} tooltipType="none" isAnimationActive={false} />
             <Area type="monotone" dataKey="expenses" name="הוצאות" stroke="none" fill={`url(#${id}-exp)`} tooltipType="none" isAnimationActive={false} />
-            <Line type="monotone" dataKey="income" name="הכנסות" stroke={INCOME} strokeWidth={2} dot={mode === "weekly" ? { r: 4, strokeWidth: 2, fill: "#fff" } : false} activeDot={{ r: 5, stroke: "#fff", strokeWidth: 2 }} isAnimationActive={false} />
+            <Line type="monotone" dataKey="income" name="הכנסות" stroke={INCOME} strokeWidth={2.25} dot={mode === "weekly" ? { r: 4, strokeWidth: 2, fill: "#fff" } : false} activeDot={{ r: 5, stroke: "#fff", strokeWidth: 2 }} isAnimationActive={false} />
             <Line type="monotone" dataKey="expenses" name="הוצאות" stroke={EXPENSE} strokeWidth={2} strokeDasharray="6 4" dot={mode === "weekly" ? { r: 4, strokeWidth: 2, fill: "#fff" } : false} activeDot={{ r: 5, stroke: "#fff", strokeWidth: 2 }} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>

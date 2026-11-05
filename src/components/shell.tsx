@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   Banknote, Bell, Calendar, ChartNoAxesColumn, ChevronDown, CircleMinus, CirclePlus, House, Landmark,
-  LogOut, Menu, UserRound, Users, UsersRound, X,
+  LogOut, Menu, ShieldCheck, Users, UsersRound, X,
 } from "lucide-react";
 import { NAV } from "./nav";
 import { logout } from "@/app/login/actions";
@@ -55,21 +55,23 @@ export function Shell({ displayName, months, children }: { displayName: string; 
           <X size={20} />
         </button>
         <div className="brand">
-          <span className="brand-mark"><ChartNoAxesColumn size={22} aria-hidden /></span>
+          <span className="brand-mark"><ChartNoAxesColumn size={19} strokeWidth={2.2} aria-hidden /></span>
           העסק שלי
         </div>
+        <div className="nav-label" aria-hidden>ניהול העסק</div>
         <nav className="nav">
           {NAV.map((item) => {
             const Icon = ICONS[item.icon];
             const href = (item.slug ? `/dashboard/${item.slug}` : "/dashboard") + q;
             return (
               <Link key={item.slug} href={href} aria-current={current === item ? "page" : undefined}>
-                <Icon size={20} aria-hidden />
+                <Icon size={19} strokeWidth={1.8} aria-hidden />
                 {item.label}
               </Link>
             );
           })}
         </nav>
+        <div className="sidebar-foot"><ShieldCheck size={15} aria-hidden /> גישה בסיסמה בלבד</div>
       </aside>
       <div className="backdrop" onClick={() => setNavOpen(false)} aria-hidden />
 
@@ -101,7 +103,7 @@ function DatePicker({ months, selected, pathname }: { months: Month[]; selected:
   return (
     <div className="anchor" ref={ref}>
       <button className="date-btn" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} aria-label={`תקופה: ${selected.label}`}>
-        <Calendar size={18} aria-hidden />
+        <Calendar size={17} aria-hidden />
         <span className="sep date-text" aria-hidden />
         <span className="date-text">{selected.label}</span>
         <ChevronDown size={16} aria-hidden />
@@ -128,7 +130,7 @@ function Notifications() {
   return (
     <div className="anchor" ref={ref}>
       <button className="icon-btn" onClick={() => setOpen(!open)} aria-label="התראות" aria-expanded={open}>
-        <Bell size={21} />
+        <Bell size={19} strokeWidth={1.8} />
       </button>
       {open && (
         <div className="popover" role="dialog" aria-label="התראות">
@@ -145,7 +147,7 @@ function UserMenu({ displayName }: { displayName: string }) {
   return (
     <div className="anchor" ref={ref}>
       <button className="user" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} aria-label={`חשבון: ${displayName}`}>
-        <span className="avatar"><UserRound size={22} aria-hidden /></span>
+        <span className="avatar" aria-hidden>{displayName.trim().charAt(0) || "מ"}</span>
         <span className="user-text">
           <strong>{displayName}</strong>
           <small>מנהל המערכת</small>
