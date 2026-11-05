@@ -79,8 +79,19 @@ export const entriesFor = (store: Store, month: string, type?: Entry["type"]) =>
     .filter((e) => monthOf(e.date) === month && (!type || e.type === type))
     .sort((a, b) => (a.date === b.date ? b.createdAt.localeCompare(a.createdAt) : b.date.localeCompare(a.date)));
 
+export const SALES_PREFIX = "מכירות: ";
+
+/** Everything that counts toward the totals: manual entries plus each agent's sales as income. */
+function ledger(store: Store, month: string): Entry[] {
+  const names = new Map(store.employees.map((e) => [e.id, e.name]));
+  const sales: Entry[] = store.sales
+    .filter((x) => monthOf(x.date) === month && names.has(x.employeeId))
+    .map((x) => ({ id: x.id, type: "income", date: x.date, category: `${SALES_PREFIX}${names.get(x.employeeId)}`, amount: x.amount, createdAt: x.createdAt }));
+  return [...entriesFor(store, month), ...sales];
+}
+
 function monthTotals(store: Store, month: string) {
-  const list = entriesFor(store, month);
+  const list = ledger(store, month);
   const income = round2(sumBy(list.filter((e) => e.type === "income"), (e) => e.amount));
   const expenses = round2(sumBy(list.filter((e) => e.type === "expense"), (e) => e.amount));
   return { income, expenses, profit: round2(income - expenses), count: list.length };
@@ -135,7 +146,7 @@ export function summarize(store: Store, month: string) {
   const hasPrev = prev.count > 0;
   const m = Number(month.slice(5));
 
-  const list = entriesFor(store, month);
+  const list = ledger(store, month);
   const days = daysIn(month);
   const daily: Point[] = Array.from({ length: days }, (_, i) => ({ label: `${i + 1}/${m}`, income: 0, expenses: 0 }));
   for (const e of list) {

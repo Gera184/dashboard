@@ -26,7 +26,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
       <section className="card" aria-labelledby="sale-add-t">
         <div className="card-head">
           <h2 id="sale-add-t">רישום מכירה</h2>
-          <span className="muted">העמלה מחושבת אוטומטית לפי אחוז העמלה של העובד</span>
+          <span className="muted">כל מכירה נספרת כהכנסה בדשבורד, והעמלה מחושבת לפי אחוז העמלה של העובד</span>
         </div>
         {rows.length === 0 ? <Empty text="קודם הוסיפו עובד, ואז אפשר לרשום לו מכירות." /> : <SaleForm employees={rows.map((r) => ({ id: r.id, name: r.name }))} defaultDate={defaultDateFor(month)} />}
       </section>

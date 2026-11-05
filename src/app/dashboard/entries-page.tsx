@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { readStore } from "@/lib/store";
 import { categorySuggestions, defaultDateFor, entriesFor, formatDate, monthLabel } from "@/lib/data";
 import { formatILS } from "@/lib/format";
@@ -15,18 +16,19 @@ export async function EntriesPage({ type, month }: { type: "income" | "expense";
     <>
       <section className="card" aria-labelledby="add-t">
         <div className="card-head">
-          <h2 id="add-t">{isIncome ? "הוספת הכנסה" : "הוספת הוצאה"}</h2>
+          <h2 id="add-t">{isIncome ? "הוספת הכנסה אחרת" : "הוספת הוצאה"}</h2>
+          {isIncome && <span className="muted">מכירות של סוכנים נרשמות בעמוד <Link href={`/dashboard/employees?month=${month}`} className="inline-link">עובדים ועמלות</Link> ונספרות כהכנסה אוטומטית</span>}
         </div>
         <EntryForm type={type} categories={categorySuggestions(store, type)} defaultDate={defaultDateFor(month)} />
       </section>
 
       <section className="card" aria-labelledby="list-t">
         <div className="card-head">
-          <h2 id="list-t">{isIncome ? "הכנסות" : "הוצאות"} ב{monthLabel(month)}</h2>
+          <h2 id="list-t">{isIncome ? "הכנסות נוספות" : "הוצאות"} ב{monthLabel(month)}</h2>
           <span className={`total-pill ${type}`}>סה״כ <strong className="num">{formatILS(total)}</strong></span>
         </div>
         {list.length === 0 ? (
-          <Empty text={isIncome ? "אין הכנסות בחודש הזה. הוסיפו את הראשונה בטופס למעלה." : "אין הוצאות בחודש הזה. הוסיפו את הראשונה בטופס למעלה."} />
+          <Empty text={isIncome ? "אין הכנסות נוספות בחודש הזה (מלבד מכירות הסוכנים)." : "אין הוצאות בחודש הזה. הוסיפו את הראשונה בטופס למעלה."} />
         ) : (
           <div className="table-scroll">
             <table className="data">

@@ -54,12 +54,12 @@ export function GettingStarted({ month }: { month: string }) {
     <section className="card getting-started">
       <div>
         <h2>אין עדיין נתונים לחודש הזה</h2>
-        <p className="muted">הוסיפו הכנסות, הוצאות ועובדים, וכל הכרטיסים והגרפים יתעדכנו אוטומטית.</p>
+        <p className="muted">רשמו מכירות של הסוכנים (הן נספרות כהכנסות), הוסיפו הוצאות, וכל הכרטיסים והגרפים יתעדכנו אוטומטית.</p>
       </div>
       <div className="gs-actions">
-        <Link className="btn-primary" href={`/dashboard/income${q}`}><CirclePlus size={16} aria-hidden /> הוספת הכנסה</Link>
+        <Link className="btn-primary" href={`/dashboard/employees${q}`}><Users size={16} aria-hidden /> רישום מכירות</Link>
         <Link className="btn-secondary" href={`/dashboard/expenses${q}`}><CircleMinus size={16} aria-hidden /> הוספת הוצאה</Link>
-        <Link className="btn-secondary" href={`/dashboard/employees${q}`}><Users size={16} aria-hidden /> ניהול עובדים</Link>
+        <Link className="btn-secondary" href={`/dashboard/income${q}`}><CirclePlus size={16} aria-hidden /> הכנסה אחרת</Link>
       </div>
     </section>
   );
@@ -74,7 +74,7 @@ export function IncomeBySource({ s }: { s: Summary }) {
         <span className="select-btn" style={{ cursor: "default" }}>{s.label}</span>
       </div>
       {s.incomeSources.length === 0 ? (
-        <Empty text="עדיין לא הוזנו הכנסות החודש." href={`/dashboard/income?month=${s.month}`} cta="הוספת הכנסה" />
+        <Empty text="עדיין לא נרשמו מכירות או הכנסות החודש." href={`/dashboard/employees?month=${s.month}`} cta="רישום מכירה" />
       ) : (
         <ul className="bar-list">
           {s.incomeSources.map((x) => (

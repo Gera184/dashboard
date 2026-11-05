@@ -5,7 +5,8 @@ The dashboard starts **empty**. You enter your own data in the app (behind the a
 
 - **הכנסות** (`/dashboard/income`): date, income source, amount in ₪, optional note.
 - **הוצאות** (`/dashboard/expenses`): date, category, amount in ₪, optional note.
-- **עובדים ועמלות** (`/dashboard/employees`): employees with a monthly sales target and commission %, plus sales per employee. Commission = sales × rate.
+- **עובדים ועמלות** (`/dashboard/employees`): employees (agents) with a monthly sales target and commission %, plus sales per employee. Commission = sales × rate. **Agent sales count as income** on the dashboard (source "מכירות: <name>").
+- The income page is for any other income besides agent sales.
 
 Every card and chart on the main dashboard is computed from those entries for the month chosen in the header (`?month=YYYY-MM`).
 Category lists are suggestions; you can type any name.

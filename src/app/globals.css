@@ -311,3 +311,4 @@ table.data td.wrap { white-space: normal; min-width: 120px; }
   .bar-list li .bar-track { grid-column: 1 / -1; grid-row: 2; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.inline-link { color: var(--accent); text-decoration: underline; }
