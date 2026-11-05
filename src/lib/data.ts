@@ -66,22 +66,6 @@ export const changes = {
   profit: pct(totals.profit, prev.income - prev.expenses), // +29%
 };
 
-export const transactions = [
-  { date: "31/10/2026", description: "תקבול – סטודיו אלפא", type: "הכנסה", amount: 8500 },
-  { date: "30/10/2026", description: "קמפיין ממומן ברשתות", type: "פרסום", amount: -1200 },
-  { date: "29/10/2026", description: "תקבול – נוף ים נכסים", type: "הכנסה", amount: 5000 },
-  { date: "28/10/2026", description: "מנוי תוכנת הנהלת חשבונות", type: "תוכנות", amount: -450 },
-  { date: "27/10/2026", description: "תקבול – גלבוע הפקות", type: "הכנסה", amount: 3500 },
-];
-
-export const topClients = [
-  { name: "סטודיו אלפא", amount: 28000, tone: "blue" },
-  { name: "נוף ים נכסים", amount: 20000, tone: "purple" },
-  { name: "גלבוע הפקות", amount: 16000, tone: "pink" },
-  { name: "טכנו־פלוס", amount: 12000, tone: "amber" },
-  { name: "קפה הכרמל", amount: 9000, tone: "green" },
-] as const;
-
 // Commission = 6.25% of sales. Commissions sum to the ₪8,500 "עמלות עובדים" category.
 export const COMMISSION_RATE = 0.0625;
 export const employees = [

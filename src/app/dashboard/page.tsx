@@ -2,7 +2,7 @@ import { requireSession } from "@/lib/auth/session";
 import { IncomeExpenseChart } from "@/components/charts/income-expense-chart";
 import { ExpenseDonut } from "@/components/charts/expense-donut";
 import { CashFlowChart } from "@/components/charts/cash-flow-chart";
-import { EmployeesTable, ExpenseByCategory, IncomeBySource, RecentTransactions, SummaryCards, TopClients } from "@/components/widgets";
+import { EmployeesTable, ExpenseByCategory, IncomeBySource, SummaryCards } from "@/components/widgets";
 
 export default async function DashboardPage() {
   await requireSession();
@@ -18,11 +18,7 @@ export default async function DashboardPage() {
         <ExpenseByCategory />
         <IncomeBySource />
       </div>
-      <div className="row-4">
-        <EmployeesTable />
-        <TopClients />
-        <RecentTransactions />
-      </div>
+      <EmployeesTable />
     </>
   );
 }

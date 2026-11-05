@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Building2, ChartColumn, Coins, Ellipsis, Megaphone, Monitor, Percent, ReceiptText, Users } from "lucide-react";
-import { changes, employees, expenseCategories, incomeSources, topClients, totals, transactions } from "@/lib/data";
+import { changes, employees, expenseCategories, incomeSources, totals } from "@/lib/data";
 import { formatILS, formatPercent, formatSignedPercent } from "@/lib/format";
 import { TONE_HEX } from "@/lib/tones";
 
@@ -89,66 +89,6 @@ export function ExpenseByCategory() {
           );
         })}
       </ul>
-    </section>
-  );
-}
-
-export function RecentTransactions() {
-  return (
-    <section className="card" aria-labelledby="tx-t">
-      <div className="card-head">
-        <h2 id="tx-t">עסקאות אחרונות</h2>
-        <button className="link-btn" type="button">הצג הכל</button>
-      </div>
-      <div className="table-scroll">
-        <table className="data">
-          <thead>
-            <tr><th>תאריך</th><th>תיאור</th><th>סוג</th><th className="end">סכום</th></tr>
-          </thead>
-          <tbody>
-            {transactions.map((t) => (
-              <tr key={t.date + t.description}>
-                <td className="num">{t.date}</td>
-                <td className="wrap">{t.description}</td>
-                <td>{t.type}</td>
-                <td className={`end num ${t.amount > 0 ? "pos" : "neg"}`}>
-                  <span className="visually-hidden">{t.amount > 0 ? "זיכוי" : "חיוב"}</span>
-                  {formatILS(Math.abs(t.amount))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-export function TopClients() {
-  return (
-    <section className="card" aria-labelledby="cl-t">
-      <div className="card-head">
-        <h2 id="cl-t">לקוחות מובילים</h2>
-        <button className="link-btn" type="button">הצג הכל</button>
-      </div>
-      <div className="table-scroll">
-        <table className="data">
-          <thead>
-            <tr><th>לקוח</th><th className="end">הכנסות החודש</th></tr>
-          </thead>
-          <tbody>
-            {topClients.map((c) => (
-              <tr key={c.name}>
-                <td>
-                  <span className="client-badge" style={{ background: TONE_HEX[c.tone] }} aria-hidden>{c.name[0]}</span>
-                  {c.name}
-                </td>
-                <td className="end num" style={{ fontWeight: 600 }}>{formatILS(c.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </section>
   );
 }
