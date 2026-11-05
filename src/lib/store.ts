@@ -15,6 +15,7 @@ export type Entry = {
   category: string; // income source or expense category
   amount: number; // ₪
   note?: string;
+  person?: string; // for salaries: the employee's name
   createdAt: string;
 };
 
@@ -35,9 +36,30 @@ export type Sale = {
   createdAt: string;
 };
 
-export type Store = { version: 1; entries: Entry[]; employees: Employee[]; sales: Sale[] };
+export type Loan = {
+  id: string;
+  lender: string;
+  amount: number; // principal received
+  monthlyPayment: number;
+  firstPayment: string; // YYYY-MM-DD of the first repayment
+  payments: number; // number of monthly repayments
+  note?: string;
+  createdAt: string;
+};
 
-const EMPTY: Store = { version: 1, entries: [], employees: [], sales: [] };
+export type Order = {
+  id: string;
+  client: string;
+  date: string; // order date
+  amount: number;
+  paidDate?: string; // set when the client paid
+  note?: string;
+  createdAt: string;
+};
+
+export type Store = { version: 1; entries: Entry[]; employees: Employee[]; sales: Sale[]; loans: Loan[]; orders: Order[] };
+
+const EMPTY: Store = { version: 1, entries: [], employees: [], sales: [], loans: [], orders: [] };
 
 export const DATA_FILE = process.env.DATA_FILE?.trim() || path.join(/*turbopackIgnore: true*/ process.cwd(), "data", "finance.json");
 
@@ -49,6 +71,8 @@ export async function readStore(): Promise<Store> {
       entries: Array.isArray(raw.entries) ? raw.entries : [],
       employees: Array.isArray(raw.employees) ? raw.employees : [],
       sales: Array.isArray(raw.sales) ? raw.sales : [],
+      loans: Array.isArray(raw.loans) ? raw.loans : [],
+      orders: Array.isArray(raw.orders) ? raw.orders : [],
     };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return structuredClone(EMPTY);

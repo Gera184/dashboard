@@ -3,13 +3,18 @@
 Next.js 16 (App Router) + React 19 + Recharts. Hebrew, right-to-left, amounts in ₪.
 The dashboard starts **empty**. You enter your own data in the app (behind the admin login):
 
-- **הכנסות** (`/dashboard/income`): date, income source, amount in ₪, optional note.
-- **הוצאות** (`/dashboard/expenses`): date, category, amount in ₪, optional note.
-- **עובדים ועמלות** (`/dashboard/employees`): employees (agents) with a monthly sales target and commission %, plus sales per employee. Commission = sales × rate. **Agent sales count as income** on the dashboard (source "מכירות: <name>").
-- The income page is for any other income besides agent sales.
+| Page | What you enter | How it counts |
+|---|---|---|
+| **נציגים ועמלות** `/dashboard/employees` | agents (monthly target, commission %) and each sale | sales = income (source "מכירות: <name>"); commission = sales × rate |
+| **הכנסות** `/dashboard/income` | any other income | income |
+| **הוצאות** `/dashboard/expenses` | date, category, amount | expense |
+| **משכורות** `/dashboard/salaries` | employee, date, salary cost | expense (category "משכורות") |
+| **הלוואות** `/dashboard/loans` | lender, amount, monthly repayment, number of payments, first payment | each month's repayment = expense, automatically |
+| **לקוחות והזמנות** `/dashboard/clients` | client orders, marked paid / unpaid | "clients who paid this month: X of Y" and open amount (not added to income, to avoid double counting with agent sales) |
 
-Every card and chart on the main dashboard is computed from those entries for the month chosen in the header (`?month=YYYY-MM`).
-Category lists are suggestions; you can type any name.
+The main dashboard shows, for the month chosen in the header (`?month=YYYY-MM`): gross (total income), expenses and net,
+clients who paid, salaries and loan repayments, a 12-month income/expense chart, how much each agent brought in and their commission,
+income by source, expenses by category and a daily/weekly chart.
 
 ## Where your data is stored
 
@@ -61,5 +66,5 @@ To change the password, generate a new hash and restart. To sign everyone out, r
 - No MFA. Add TOTP if the dashboard will ever hold real data.
 - `x-forwarded-for` is trusted for rate limiting; deploy behind a proxy that sets it (Vercel, Nginx, etc.).
 - Commissions are not added to expenses automatically. If you pay them, add an expense in the "עמלות עובדים" category.
+- Loan repayments are a fixed monthly amount; interest changes are not modelled.
 - The JSON store is meant for a single server instance; use a real database before running several instances.
-- The other sidebar pages (reports, clients, projects, documents, settings) are protected placeholders.

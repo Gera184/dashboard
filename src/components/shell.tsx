@@ -4,15 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
-  Bell, Briefcase, Calendar, ChartNoAxesColumn, ChevronDown, CircleMinus, CirclePlus, FileText,
-  Files, Headset, House, LogOut, Menu, Settings, UserRound, Users, UsersRound, X,
+  Banknote, Bell, Calendar, ChartNoAxesColumn, ChevronDown, CircleMinus, CirclePlus, House, Landmark,
+  LogOut, Menu, UserRound, Users, UsersRound, X,
 } from "lucide-react";
 import { NAV } from "./nav";
 import { logout } from "@/app/login/actions";
 
 const ICONS = {
-  house: House, income: CirclePlus, expenses: CircleMinus, reports: FileText, employees: Users,
-  clients: UsersRound, projects: Briefcase, documents: Files, settings: Settings,
+  house: House, income: CirclePlus, expenses: CircleMinus, salaries: Banknote, loans: Landmark,
+  employees: Users, clients: UsersRound,
 } as const;
 
 function usePopover() {
@@ -70,13 +70,6 @@ export function Shell({ displayName, months, children }: { displayName: string; 
             );
           })}
         </nav>
-        <div className="help-card">
-          <Headset size={26} aria-hidden />
-          <div>
-            <strong>צריך עזרה?</strong>
-            <span>צור קשר עם התמיכה</span>
-          </div>
-        </div>
       </aside>
       <div className="backdrop" onClick={() => setNavOpen(false)} aria-hidden />
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { readStore } from "@/lib/store";
-import { categorySuggestions, defaultDateFor, entriesFor, formatDate, monthLabel } from "@/lib/data";
+import { categorySuggestions, defaultDateFor, formatDate, monthLabel, plainEntriesFor } from "@/lib/data";
 import { formatILS } from "@/lib/format";
 import { DeleteButton, EntryForm } from "@/components/forms";
 import { Empty } from "@/components/empty";
@@ -9,7 +9,7 @@ import { deleteEntry } from "./actions";
 /** Shared page body for /dashboard/income and /dashboard/expenses. Callers must run requireSession() first. */
 export async function EntriesPage({ type, month }: { type: "income" | "expense"; month: string }) {
   const store = await readStore();
-  const list = entriesFor(store, month, type);
+  const list = plainEntriesFor(store, month, type);
   const total = list.reduce((s, e) => s + e.amount, 0);
   const isIncome = type === "income";
   return (
@@ -17,6 +17,7 @@ export async function EntriesPage({ type, month }: { type: "income" | "expense";
       <section className="card" aria-labelledby="add-t">
         <div className="card-head">
           <h2 id="add-t">{isIncome ? "הוספת הכנסה אחרת" : "הוספת הוצאה"}</h2>
+          {!isIncome && <span className="muted">משכורות נרשמות בעמוד <Link href={`/dashboard/salaries?month=${month}`} className="inline-link">משכורות</Link>, והחזרי הלוואות מחושבים אוטומטית מעמוד <Link href={`/dashboard/loans?month=${month}`} className="inline-link">הלוואות</Link></span>}
           {isIncome && <span className="muted">מכירות של סוכנים נרשמות בעמוד <Link href={`/dashboard/employees?month=${month}`} className="inline-link">עובדים ועמלות</Link> ונספרות כהכנסה אוטומטית</span>}
         </div>
         <EntryForm type={type} categories={categorySuggestions(store, type)} defaultDate={defaultDateFor(month)} />

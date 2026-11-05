@@ -19,30 +19,30 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <section className="card" aria-labelledby="emp-add-t">
-        <div className="card-head"><h2 id="emp-add-t">הוספת עובד</h2></div>
+        <div className="card-head"><h2 id="emp-add-t">הוספת נציג</h2></div>
         <EmployeeForm />
       </section>
 
       <section className="card" aria-labelledby="sale-add-t">
         <div className="card-head">
           <h2 id="sale-add-t">רישום מכירה</h2>
-          <span className="muted">כל מכירה נספרת כהכנסה בדשבורד, והעמלה מחושבת לפי אחוז העמלה של העובד</span>
+          <span className="muted">כל מכירה נספרת כהכנסה בדשבורד, והעמלה מחושבת לפי אחוז העמלה של הנציג</span>
         </div>
-        {rows.length === 0 ? <Empty text="קודם הוסיפו עובד, ואז אפשר לרשום לו מכירות." /> : <SaleForm employees={rows.map((r) => ({ id: r.id, name: r.name }))} defaultDate={defaultDateFor(month)} />}
+        {rows.length === 0 ? <Empty text="קודם הוסיפו נציג, ואז אפשר לרשום לו מכירות." /> : <SaleForm employees={rows.map((r) => ({ id: r.id, name: r.name }))} defaultDate={defaultDateFor(month)} />}
       </section>
 
       <section className="card" aria-labelledby="emp-list-t">
         <div className="card-head">
-          <h2 id="emp-list-t">עובדים ועמלות ב{monthLabel(month)}</h2>
+          <h2 id="emp-list-t">נציגים ועמלות ב{monthLabel(month)}</h2>
           <span className="total-pill expense">סה״כ עמלות <strong className="num">{formatILS(totalCommission)}</strong></span>
         </div>
         {rows.length === 0 ? (
-          <Empty text="עדיין לא נוספו עובדים." />
+          <Empty text="עדיין לא נוספו נציגים." />
         ) : (
           <div className="table-scroll">
             <table className="data">
               <thead>
-                <tr><th>עובד</th><th>מכירות החודש</th><th>עמלה</th><th>עמידה ביעד</th><th>יעד חודשי (₪) · עמלה (%)</th><th><span className="visually-hidden">פעולות</span></th></tr>
+                <tr><th>נציג</th><th>מכירות החודש</th><th>עמלה</th><th>עמידה ביעד</th><th>יעד חודשי (₪) · עמלה (%)</th><th><span className="visually-hidden">פעולות</span></th></tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
@@ -71,7 +71,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
           <div className="table-scroll">
             <table className="data">
               <thead>
-                <tr><th>תאריך</th><th>עובד</th><th className="end">סכום</th><th>הערה</th><th><span className="visually-hidden">פעולות</span></th></tr>
+                <tr><th>תאריך</th><th>נציג</th><th className="end">סכום</th><th>הערה</th><th><span className="visually-hidden">פעולות</span></th></tr>
               </thead>
               <tbody>
                 {sales.map((x) => (

@@ -1,8 +1,8 @@
 // Pure calculations over the data you enter. Nothing here is sample data.
-import type { Employee, Entry, Sale, Store } from "./store";
+import type { Employee, Entry, Loan, Order, Sale, Store } from "./store";
 
 export type Tone = "blue" | "purple" | "pink" | "amber" | "teal" | "gray" | "green" | "red";
-export type CatIcon = "megaphone" | "users" | "percent" | "building" | "monitor" | "car" | "truck" | "more";
+export type CatIcon = "megaphone" | "users" | "percent" | "building" | "monitor" | "car" | "truck" | "bank" | "more";
 
 const PALETTE: Tone[] = ["blue", "purple", "pink", "amber", "teal", "gray"];
 const MAX_SLICES = 6;
@@ -16,7 +16,7 @@ export const INCOME_SOURCES = ["לקוחות קיימים", "לקוחות חדש
 
 const ICON_BY_CATEGORY: Record<string, CatIcon> = {
   "פרסום ומדיה": "megaphone", "פרסום": "megaphone", "שיווק": "megaphone",
-  "משכורות": "users", "שכר": "users",
+  "משכורות": "users", "שכר": "users", "החזרי הלוואות": "bank",
   "עמלות עובדים": "percent", "עמלות": "percent",
   "הוצאות משרד": "building", "שכירות": "building", "משרד": "building",
   "תוכנות ומנויים": "monitor", "תוכנות": "monitor",
@@ -80,6 +80,66 @@ export const entriesFor = (store: Store, month: string, type?: Entry["type"]) =>
     .sort((a, b) => (a.date === b.date ? b.createdAt.localeCompare(a.createdAt) : b.date.localeCompare(a.date)));
 
 export const SALES_PREFIX = "מכירות: ";
+export const SALARY_CATEGORY = "משכורות";
+export const LOAN_CATEGORY = "החזרי הלוואות";
+
+/** Manual entries that are not salaries (salaries have their own page). */
+export const plainEntriesFor = (store: Store, month: string, type: Entry["type"]) =>
+  entriesFor(store, month, type).filter((e) => !(type === "expense" && e.category === SALARY_CATEGORY));
+export const salariesFor = (store: Store, month: string) =>
+  entriesFor(store, month, "expense").filter((e) => e.category === SALARY_CATEGORY);
+
+// ---------- Loans ----------
+const monthDiff = (a: string, b: string) => (Number(a.slice(0, 4)) - Number(b.slice(0, 4))) * 12 + Number(a.slice(5, 7)) - Number(b.slice(5, 7));
+
+/** 1-based number of the repayment that falls in `month`, or 0 if none. */
+function paymentIndex(loan: Loan, month: string) {
+  const i = monthDiff(month, monthOf(loan.firstPayment)) + 1;
+  return i >= 1 && i <= loan.payments ? i : 0;
+}
+
+export type LoanRow = Loan & { paid: number; remaining: number; remainingAmount: number; dueThisMonth: boolean; endMonth: string };
+
+export function loanRows(store: Store, month: string): LoanRow[] {
+  return store.loans.map((l) => {
+    const elapsed = Math.max(0, Math.min(l.payments, monthDiff(month, monthOf(l.firstPayment)) + 1));
+    return {
+      ...l,
+      paid: elapsed,
+      remaining: l.payments - elapsed,
+      remainingAmount: round2((l.payments - elapsed) * l.monthlyPayment),
+      dueThisMonth: paymentIndex(l, month) > 0,
+      endMonth: shiftMonth(monthOf(l.firstPayment), l.payments - 1),
+    };
+  }).sort((a, b) => b.remainingAmount - a.remainingAmount);
+}
+
+// ---------- Orders ----------
+export function ordersFor(store: Store, month: string) {
+  return store.orders
+    .filter((o) => monthOf(o.date) === month || (o.paidDate && monthOf(o.paidDate) === month))
+    .sort((a, b) => Number(!!a.paidDate) - Number(!!b.paidDate) || b.date.localeCompare(a.date));
+}
+
+/** Orders placed this month: how many clients paid and how much is still open. */
+export function orderStats(store: Store, month: string) {
+  const placed = store.orders.filter((o) => monthOf(o.date) === month);
+  const paid = placed.filter((o) => o.paidDate);
+  const clients = new Set(placed.map((o) => o.client));
+  const paidClients = new Set(placed.filter((o) => o.paidDate).map((o) => o.client));
+  // a client counts as paid only when all their orders this month are paid
+  for (const o of placed) if (!o.paidDate) paidClients.delete(o.client);
+  return {
+    orders: placed.length,
+    paidOrders: paid.length,
+    clients: clients.size,
+    paidClients: paidClients.size,
+    paidAmount: round2(sumBy(paid, (o) => o.amount)),
+    openAmount: round2(sumBy(placed.filter((o) => !o.paidDate), (o) => o.amount)),
+    unpaid: placed.filter((o) => !o.paidDate).sort((a, b) => a.date.localeCompare(b.date)) as Order[],
+  };
+}
+export type OrderStats = ReturnType<typeof orderStats>;
 
 /** Everything that counts toward the totals: manual entries plus each agent's sales as income. */
 function ledger(store: Store, month: string): Entry[] {
@@ -87,7 +147,10 @@ function ledger(store: Store, month: string): Entry[] {
   const sales: Entry[] = store.sales
     .filter((x) => monthOf(x.date) === month && names.has(x.employeeId))
     .map((x) => ({ id: x.id, type: "income", date: x.date, category: `${SALES_PREFIX}${names.get(x.employeeId)}`, amount: x.amount, createdAt: x.createdAt }));
-  return [...entriesFor(store, month), ...sales];
+  const loans: Entry[] = store.loans
+    .filter((l) => paymentIndex(l, month) > 0)
+    .map((l) => ({ id: l.id, type: "expense", date: `${month}-${String(Math.min(Number(l.firstPayment.slice(8)), daysIn(month))).padStart(2, "0")}`, category: LOAN_CATEGORY, amount: l.monthlyPayment, createdAt: l.createdAt }));
+  return [...entriesFor(store, month), ...sales, ...loans];
 }
 
 function monthTotals(store: Store, month: string) {
@@ -166,7 +229,7 @@ export function summarize(store: Store, month: string) {
     });
   }
 
-  const cashFlow = [-2, -1, 0].map((delta) => {
+  const cashFlow = Array.from({ length: 12 }, (_, i) => i - 11).map((delta) => {
     const key = shiftMonth(month, delta);
     const t = monthTotals(store, key);
     return { month: `${monthName(key, "short")} ${key.slice(0, 4)}`, income: t.income, expenses: t.expenses };
@@ -186,6 +249,9 @@ export function summarize(store: Store, month: string) {
     incomeSources: groupByCategory(list.filter((e) => e.type === "income")),
     cashFlow,
     employees: employeeRows(store, month),
+    orders: orderStats(store, month),
+    salaries: round2(sumBy(salariesFor(store, month), (e) => e.amount)),
+    loanPayments: round2(sumBy(list.filter((e) => e.category === LOAN_CATEGORY && e.type === "expense"), (e) => e.amount)),
   };
 }
 
@@ -193,7 +259,7 @@ export type Summary = ReturnType<typeof summarize>;
 
 /** Category names to suggest in the form: presets first, then anything you have used before. */
 export function categorySuggestions(store: Store, type: Entry["type"]) {
-  const presets = type === "income" ? INCOME_SOURCES : EXPENSE_CATEGORIES;
-  const used = store.entries.filter((e) => e.type === type).map((e) => e.category);
+  const presets = type === "income" ? INCOME_SOURCES : EXPENSE_CATEGORIES.filter((c) => c !== SALARY_CATEGORY);
+  const used = store.entries.filter((e) => e.type === type && e.category !== SALARY_CATEGORY).map((e) => e.category);
   return [...new Set([...presets, ...used])];
 }

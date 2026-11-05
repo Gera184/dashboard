@@ -42,12 +42,14 @@ export async function addEntry(_prev: FormState, fd: FormData): Promise<FormStat
   const category = text(fd, "category", 60);
   const amount = parseAmount(fd.get("amount"));
   const note = text(fd, "note", 200);
+  const person = text(fd, "person", 60);
   if (!date) return { error: "יש לבחור תאריך תקין." };
+  if (fd.has("person") && !person) return { error: "יש לבחור או לכתוב שם עובד." };
   if (!category) return { error: type === "income" ? "יש לבחור או לכתוב מקור הכנסה." : "יש לבחור או לכתוב קטגוריה." };
   if (amount === null) return { error: "יש להזין סכום חיובי (עד שתי ספרות אחרי הנקודה)." };
 
   await updateStore((s) => {
-    s.entries.push({ id: newId(), type, date, category, amount, note: note || undefined, createdAt: new Date().toISOString() });
+    s.entries.push({ id: newId(), type, date, category, amount, note: note || undefined, person: person || undefined, createdAt: new Date().toISOString() });
   });
   return done();
 }
@@ -67,7 +69,7 @@ export async function addEmployee(_prev: FormState, fd: FormData): Promise<FormS
   const name = text(fd, "name", 60);
   const target = parseAmount(fd.get("target") || "0", { allowZero: true });
   const rate = parseAmount(fd.get("commissionRate") || "0", { allowZero: true });
-  if (!name) return { error: "יש להזין שם עובד." };
+  if (!name) return { error: "יש להזין שם נציג." };
   if (target === null) return { error: "יעד חודשי חייב להיות מספר (אפשר 0)." };
   if (rate === null || rate > 100) return { error: "אחוז עמלה חייב להיות בין 0 ל-100." };
 
@@ -76,7 +78,7 @@ export async function addEmployee(_prev: FormState, fd: FormData): Promise<FormS
     s.employees.push({ id: newId(), name, target, commissionRate: rate, createdAt: new Date().toISOString() });
     return false;
   });
-  if (dup) return { error: "כבר קיים עובד בשם הזה." };
+  if (dup) return { error: "כבר קיים נציג בשם הזה." };
   return done();
 }
 
@@ -119,7 +121,7 @@ export async function addSale(_prev: FormState, fd: FormData): Promise<FormState
     s.sales.push({ id: newId(), employeeId, date, amount, note: note || undefined, createdAt: new Date().toISOString() });
     return true;
   });
-  if (!ok) return { error: "יש לבחור עובד." };
+  if (!ok) return { error: "יש לבחור נציג." };
   return done();
 }
 
@@ -128,6 +130,73 @@ export async function deleteSale(fd: FormData) {
   const id = String(fd.get("id") ?? "");
   await updateStore((s) => {
     s.sales = s.sales.filter((x) => x.id !== id);
+  });
+  revalidatePath("/dashboard", "layout");
+}
+
+// ---------- Loans ----------
+export async function addLoan(_prev: FormState, fd: FormData): Promise<FormState> {
+  await requireSession();
+  const lender = text(fd, "lender", 60);
+  const amount = parseAmount(fd.get("amount"), { allowZero: true });
+  const monthlyPayment = parseAmount(fd.get("monthlyPayment"));
+  const firstPayment = parseDate(fd.get("firstPayment"));
+  const payments = Number(fd.get("payments"));
+  const note = text(fd, "note", 200);
+  if (!lender) return { error: "יש לכתוב ממי ההלוואה (בנק / גורם)." };
+  if (amount === null) return { error: "סכום ההלוואה לא תקין." };
+  if (monthlyPayment === null) return { error: "יש להזין החזר חודשי חיובי." };
+  if (!firstPayment) return { error: "יש לבחור תאריך תשלום ראשון." };
+  if (!Number.isInteger(payments) || payments < 1 || payments > 600) return { error: "מספר התשלומים חייב להיות בין 1 ל-600." };
+  await updateStore((s) => {
+    s.loans.push({ id: newId(), lender, amount, monthlyPayment, firstPayment, payments, note: note || undefined, createdAt: new Date().toISOString() });
+  });
+  return done();
+}
+
+export async function deleteLoan(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  await updateStore((s) => {
+    s.loans = s.loans.filter((l) => l.id !== id);
+  });
+  revalidatePath("/dashboard", "layout");
+}
+
+// ---------- Client orders ----------
+export async function addOrder(_prev: FormState, fd: FormData): Promise<FormState> {
+  await requireSession();
+  const client = text(fd, "client", 80);
+  const date = parseDate(fd.get("date"));
+  const amount = parseAmount(fd.get("amount"));
+  const paid = fd.get("paid") === "on";
+  const note = text(fd, "note", 200);
+  if (!client) return { error: "יש לכתוב שם לקוח." };
+  if (!date) return { error: "יש לבחור תאריך הזמנה." };
+  if (amount === null) return { error: "יש להזין סכום הזמנה חיובי." };
+  await updateStore((s) => {
+    s.orders.push({ id: newId(), client, date, amount, paidDate: paid ? date : undefined, note: note || undefined, createdAt: new Date().toISOString() });
+  });
+  return done();
+}
+
+export async function setOrderPaid(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  const paid = fd.get("paid") === "1";
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+  await updateStore((s) => {
+    const o = s.orders.find((x) => x.id === id);
+    if (o) o.paidDate = paid ? (today < o.date ? o.date : today) : undefined;
+  });
+  revalidatePath("/dashboard", "layout");
+}
+
+export async function deleteOrder(fd: FormData) {
+  await requireSession();
+  const id = String(fd.get("id") ?? "");
+  await updateStore((s) => {
+    s.orders = s.orders.filter((o) => o.id !== id);
   });
   revalidatePath("/dashboard", "layout");
 }

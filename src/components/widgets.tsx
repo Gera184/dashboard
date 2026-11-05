@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   ArrowDown, ArrowUp, Building2, Car, ChartColumn, CircleMinus, CirclePlus, Coins, Ellipsis, Megaphone,
-  Monitor, Percent, ReceiptText, Truck, Users,
+  Banknote, Landmark, Monitor, Percent, ReceiptText, Truck, Users, UsersRound,
 } from "lucide-react";
 import type { Summary } from "@/lib/data";
 import { formatILS, formatPercent, formatSignedPercent } from "@/lib/format";
@@ -25,9 +25,9 @@ function Change({ value, goodWhenUp }: { value: number | null; goodWhenUp: boole
 
 export function SummaryCards({ s }: { s: Summary }) {
   const cards = [
-    { key: "income", label: "סה״כ הכנסות", value: s.totals.income, change: s.changes.income, goodWhenUp: true, icon: ChartColumn, tone: "green" },
-    { key: "expense", label: "סה״כ הוצאות", value: s.totals.expenses, change: s.changes.expenses, goodWhenUp: false, icon: ReceiptText, tone: "red" },
-    { key: "profit", label: "רווח נקי", value: s.totals.profit, change: s.changes.profit, goodWhenUp: true, icon: Coins, tone: s.totals.profit < 0 ? "red" : "green" },
+    { key: "income", label: "ברוטו החודש (הכנסות)", value: s.totals.income, change: s.changes.income, goodWhenUp: true, icon: ChartColumn, tone: "green" },
+    { key: "expense", label: "הוצאות החודש", value: s.totals.expenses, change: s.changes.expenses, goodWhenUp: false, icon: ReceiptText, tone: "red" },
+    { key: "profit", label: "נטו החודש (אחרי הוצאות)", value: s.totals.profit, change: s.changes.profit, goodWhenUp: true, icon: Coins, tone: s.totals.profit < 0 ? "red" : "green" },
   ] as const;
   return (
     <section className="kpis" aria-label={`סיכום ${s.label}`}>
@@ -59,6 +59,7 @@ export function GettingStarted({ month }: { month: string }) {
       <div className="gs-actions">
         <Link className="btn-primary" href={`/dashboard/employees${q}`}><Users size={16} aria-hidden /> רישום מכירות</Link>
         <Link className="btn-secondary" href={`/dashboard/expenses${q}`}><CircleMinus size={16} aria-hidden /> הוספת הוצאה</Link>
+        <Link className="btn-secondary" href={`/dashboard/clients${q}`}><UsersRound size={16} aria-hidden /> הזמנות לקוחות</Link>
         <Link className="btn-secondary" href={`/dashboard/income${q}`}><CirclePlus size={16} aria-hidden /> הכנסה אחרת</Link>
       </div>
     </section>
@@ -93,7 +94,7 @@ export function IncomeBySource({ s }: { s: Summary }) {
   );
 }
 
-const CAT_ICONS = { megaphone: Megaphone, users: Users, percent: Percent, building: Building2, monitor: Monitor, car: Car, truck: Truck, more: Ellipsis } as const;
+const CAT_ICONS = { megaphone: Megaphone, users: Users, percent: Percent, building: Building2, monitor: Monitor, car: Car, truck: Truck, bank: Landmark, more: Ellipsis } as const;
 
 export function ExpenseByCategory({ s }: { s: Summary }) {
   return (
@@ -130,25 +131,25 @@ export function EmployeesTable({ s }: { s: Summary }) {
   return (
     <section className="card" aria-labelledby="emp-t">
       <div className="card-head">
-        <h2 id="emp-t">עובדים ועמלות</h2>
-        <Link className="link-btn" href={`/dashboard/employees?month=${s.month}`}>ניהול עובדים</Link>
+        <h2 id="emp-t">כמה כל נציג הכניס</h2>
+        <Link className="link-btn" href={`/dashboard/employees?month=${s.month}`}>ניהול נציגים</Link>
       </div>
       {s.employees.length === 0 ? (
-        <Empty text="עדיין לא נוספו עובדים." href={`/dashboard/employees?month=${s.month}`} cta="הוספת עובד" />
+        <Empty text="עדיין לא נוספו נציגים." href={`/dashboard/employees?month=${s.month}`} cta="הוספת נציג" />
       ) : (
         <div className="table-scroll">
           <table className="data">
             <thead>
-              <tr><th>עובד</th><th>עמלת החודש</th><th>מכירות / יעד</th><th>עמידה ביעד</th></tr>
+              <tr><th>נציג</th><th>מכירות / יעד</th><th>עמלה לתשלום</th><th>עמידה ביעד</th></tr>
             </thead>
             <tbody>
               {s.employees.map((e) => (
                 <tr key={e.id}>
                   <td style={{ fontWeight: 600 }}>{e.name}</td>
-                  <td className="num">{formatILS(e.commission)}</td>
                   <td className="num">
                     <span>{formatILS(e.sales)}</span> {e.target > 0 && <span className="muted">/ {formatILS(e.target)}</span>}
                   </td>
+                  <td className="num">{formatILS(e.commission)} <small className="muted">({e.commissionRate}%)</small></td>
                   <td><Progress value={e.progress} /></td>
                 </tr>
               ))}
@@ -170,5 +171,34 @@ export function Progress({ value }: { value: number | null }) {
       </span>
       <small className="num">{formatPercent(value)}</small>
     </div>
+  );
+}
+
+export function MonthStats({ s }: { s: Summary }) {
+  const q = `?month=${s.month}`;
+  const o = s.orders;
+  const items = [
+    {
+      href: `/dashboard/clients${q}`, icon: UsersRound, tone: "blue",
+      label: "לקוחות ששילמו החודש",
+      value: o.clients === 0 ? "—" : `${o.paidClients} מתוך ${o.clients}`,
+      sub: o.clients === 0 ? "אין הזמנות החודש" : o.openAmount > 0 ? `פתוח לגבייה: ${formatILS(o.openAmount)}` : "כל ההזמנות שולמו",
+    },
+    { href: `/dashboard/salaries${q}`, icon: Banknote, tone: "purple", label: "משכורות החודש", value: formatILS(s.salaries), sub: "נכלל בהוצאות" },
+    { href: `/dashboard/loans${q}`, icon: Landmark, tone: "amber", label: "החזרי הלוואות החודש", value: formatILS(s.loanPayments), sub: "נכלל בהוצאות" },
+  ] as const;
+  return (
+    <section className="mini-kpis" aria-label="נתונים נוספים לחודש">
+      {items.map((it) => (
+        <Link key={it.label} href={it.href} className="card mini-kpi">
+          <span className="mini-icon" style={{ background: `${TONE_HEX[it.tone]}1f`, color: TONE_HEX[it.tone] }} aria-hidden><it.icon size={20} /></span>
+          <span>
+            <span className="mini-label">{it.label}</span>
+            <strong className="mini-value num">{it.value}</strong>
+            <small className="muted">{it.sub}</small>
+          </span>
+        </Link>
+      ))}
+    </section>
   );
 }
