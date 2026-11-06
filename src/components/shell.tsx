@@ -5,11 +5,13 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   Banknote, Bell, Calendar, ChartNoAxesColumn, ChevronDown, CircleMinus, CirclePlus, House, Landmark,
-  LogOut, Menu, ShieldCheck, Users, UsersRound, X,
+  Download, LogOut, Menu, Upload, ShieldCheck, Users, UsersRound, X,
 } from "lucide-react";
 import { NAV } from "./nav";
 import { logout } from "@/app/login/actions";
-import { isMonthKey, periodLabel } from "@/lib/data";
+import { availableMonths, isMonthKey, periodLabel, todayISO } from "@/lib/data";
+import { normalize, replaceStore, useStore } from "@/lib/local-store";
+import { EMPTY_STORE } from "@/lib/types";
 
 const ICONS = {
   house: House, income: CirclePlus, expenses: CircleMinus, salaries: Banknote, loans: Landmark,
@@ -32,7 +34,9 @@ function usePopover() {
 
 type Month = { key: string; label: string };
 
-export function Shell({ displayName, months, children }: { displayName: string; months: Month[]; children: React.ReactNode }) {
+export function Shell({ displayName, children }: { displayName: string; children: React.ReactNode }) {
+  const store = useStore();
+  const months: Month[] = availableMonths(store ?? EMPTY_STORE).map((key) => ({ key, label: periodLabel(key) }));
   const [navOpen, setNavOpen] = useState(false);
   const pathname = usePathname();
   const params = useSearchParams();
@@ -157,6 +161,7 @@ function UserMenu({ displayName }: { displayName: string }) {
       </button>
       {open && (
         <div className="popover" role="menu">
+          <BackupItems onDone={() => setOpen(false)} />
           <form action={logout}>
             <button className="opt" type="submit" role="menuitem">
               <span>התנתקות</span>
@@ -166,5 +171,53 @@ function UserMenu({ displayName }: { displayName: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** The data lives only in this browser, so these are the way to keep a copy or move it to another device. */
+function BackupItems({ onDone }: { onDone: () => void }) {
+  const store = useStore();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const exportFile = () => {
+    if (!store) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(store, null, 2)], { type: "application/json" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: `finance-backup-${todayISO()}.json` });
+    a.click();
+    URL.revokeObjectURL(url);
+    onDone();
+  };
+
+  const importFile = async (file: File) => {
+    try {
+      const raw = JSON.parse(await file.text());
+      if (!raw || typeof raw !== "object" || !["entries", "employees", "sales", "loans", "orders"].some((k) => Array.isArray(raw[k]))) {
+        alert("הקובץ אינו גיבוי של הדשבורד.");
+        return;
+      }
+      const next = normalize(raw);
+      const count = next.entries.length + next.sales.length + next.loans.length + next.orders.length + next.employees.length;
+      if (!confirm(`לטעון ${count} רשומות מהקובץ? הנתונים שבדפדפן הזה יוחלפו בנתוני הקובץ.`)) return;
+      replaceStore(next);
+      onDone();
+    } catch {
+      alert("לא ניתן לקרוא את הקובץ.");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <>
+      <button className="opt" type="button" role="menuitem" onClick={exportFile}>
+        <span>הורדת גיבוי</span>
+        <Download size={16} aria-hidden />
+      </button>
+      <button className="opt" type="button" role="menuitem" onClick={() => fileRef.current?.click()}>
+        <span>טעינת גיבוי</span>
+        <Upload size={16} aria-hidden />
+      </button>
+      <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
+    </>
   );
 }

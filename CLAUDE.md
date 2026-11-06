@@ -9,4 +9,4 @@ Hebrew RTL finance dashboard (Next.js 16, Recharts). Design rules for every site
 - Type: Frank Ruhl Libre (display: page titles, money figures), IBM Plex Sans Hebrew (UI and body). No Heebo/Inter.
 - One bold element: the dark "statement" hero on the dashboard (net as a large serif figure, gross/expenses beside it, 12-month net sparkline). Everything else stays quiet: white cards with hairlines, 16px radius (hero 24px, inputs 12px).
 - Motion: one load moment (hero count-up, sparkline draw, bars grow), plus press/hover feedback. `prefers-reduced-motion` turns it all off.
-- Data stays in `data/finance.json` (gitignored). Never commit it.
+- Data lives in the browser's localStorage (`src/lib/local-store.ts`), with export/import backup in the account menu. The server only does the login. Never commit real data (old `data/finance.json` stays gitignored).

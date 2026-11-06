@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { Archive, ArchiveRestore, Check, Plus, Trash2 } from "lucide-react";
-import { addEmployee, addEntry, addLoan, addOrder, addSale, setEmployeeArchived, setOrderPaid, updateEmployee, type FormState } from "@/app/dashboard/actions";
+import { addEmployee, addEntry, addLoan, addOrder, addSale, setEmployeeArchived, setOrderPaid, updateEmployee, type FormState, guard } from "@/lib/actions";
 
 function Status({ state, okText }: { state: FormState; okText: string }) {
   const [showOk, setShowOk] = useState(false);
@@ -18,7 +18,7 @@ function Status({ state, okText }: { state: FormState; okText: string }) {
 }
 
 export function EntryForm({ type, categories, defaultDate }: { type: "income" | "expense"; categories: string[]; defaultDate: string }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(addEntry, undefined);
+  const [state, action, pending] = useActionState<FormState, FormData>(guard(addEntry), undefined);
   const id = useId();
   const firstRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (state?.ok) firstRef.current?.focus(); }, [state?.nonce, state?.ok]);
@@ -53,7 +53,7 @@ export function EntryForm({ type, categories, defaultDate }: { type: "income" | 
 }
 
 export function EmployeeForm() {
-  const [state, action, pending] = useActionState<FormState, FormData>(addEmployee, undefined);
+  const [state, action, pending] = useActionState<FormState, FormData>(guard(addEmployee), undefined);
   return (
     <form action={action} className="entry-form">
       <label className="field">
@@ -78,7 +78,7 @@ export function EmployeeForm() {
 }
 
 export function SaleForm({ employees, defaultDate }: { employees: { id: string; name: string }[]; defaultDate: string }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(addSale, undefined);
+  const [state, action, pending] = useActionState<FormState, FormData>(guard(addSale), undefined);
   return (
     <form action={action} className="entry-form">
       <label className="field">
@@ -110,7 +110,7 @@ export function SaleForm({ employees, defaultDate }: { employees: { id: string; 
 }
 
 export function EmployeeSettings({ id, target, commissionRate }: { id: string; target: number; commissionRate: number }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(updateEmployee, undefined);
+  const [state, action, pending] = useActionState<FormState, FormData>(guard(updateEmployee), undefined);
   return (
     <form action={action} className="inline-form">
       <input type="hidden" name="id" value={id} />
@@ -129,9 +129,20 @@ export function EmployeeSettings({ id, target, commissionRate }: { id: string; t
   );
 }
 
+/** Runs a delete/toggle save and shows a message if the browser refused it. */
+function run(action: (fd: FormData) => Promise<void>) {
+  return async (fd: FormData) => {
+    try {
+      await action(fd);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "השמירה נכשלה.");
+    }
+  };
+}
+
 export function DeleteButton({ action, id, confirmText, label = "מחיקה" }: { action: (fd: FormData) => Promise<void>; id: string; confirmText: string; label?: string }) {
   return (
-    <form action={action} onSubmit={(e) => { if (!confirm(confirmText)) e.preventDefault(); }}>
+    <form action={run(action)} onSubmit={(e) => { if (!confirm(confirmText)) e.preventDefault(); }}>
       <input type="hidden" name="id" value={id} />
       <button type="submit" className="icon-btn danger" aria-label={label} title={label}>
         <Trash2 size={16} aria-hidden />
@@ -141,7 +152,7 @@ export function DeleteButton({ action, id, confirmText, label = "מחיקה" }: 
 }
 
 export function SalaryForm({ people, defaultDate }: { people: string[]; defaultDate: string }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(addEntry, undefined);
+  const [state, action, pending] = useActionState<FormState, FormData>(guard(addEntry), undefined);
   const id = useId();
   return (
     <form action={action} className="entry-form">
@@ -174,7 +185,7 @@ export function SalaryForm({ people, defaultDate }: { people: string[]; defaultD
 }
 
 export function LoanForm({ defaultDate }: { defaultDate: string }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(addLoan, undefined);
+  const [state, action, pending] = useActionState<FormState, FormData>(guard(addLoan), undefined);
   return (
     <form action={action} className="entry-form">
       <label className="field">
@@ -211,7 +222,7 @@ export function LoanForm({ defaultDate }: { defaultDate: string }) {
 }
 
 export function OrderForm({ clients, defaultDate }: { clients: string[]; defaultDate: string }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(addOrder, undefined);
+  const [state, action, pending] = useActionState<FormState, FormData>(guard(addOrder), undefined);
   const id = useId();
   return (
     <form action={action} className="entry-form">
@@ -247,7 +258,7 @@ export function OrderForm({ clients, defaultDate }: { clients: string[]; default
 
 export function PaidToggle({ id, paid }: { id: string; paid: boolean }) {
   return (
-    <form action={setOrderPaid}>
+    <form action={run(setOrderPaid)}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="paid" value={paid ? "0" : "1"} />
       <button type="submit" className={paid ? "status-pill paid" : "status-pill open"} title={paid ? "לחצו כדי לסמן כלא שולם" : "לחצו כדי לסמן כשולם"}>
@@ -262,7 +273,7 @@ export function ArchiveToggle({ id, archived, name }: { id: string; archived: bo
   const label = archived ? `החזרת ${name} לפעילות` : `העברת ${name} לארכיון`;
   return (
     <form
-      action={setEmployeeArchived}
+      action={run(setEmployeeArchived)}
       onSubmit={(e) => { if (!archived && !confirm(`להעביר את ${name} לארכיון? המכירות שלו/ה יישארו בכל החודשים, והוא/היא לא יופיעו יותר בטופס המכירות.`)) e.preventDefault(); }}
     >
       <input type="hidden" name="id" value={id} />

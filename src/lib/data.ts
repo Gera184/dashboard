@@ -1,5 +1,5 @@
 // Pure calculations over the data you enter. Nothing here is sample data.
-import type { Employee, Entry, Loan, Order, Sale, Store } from "./store";
+import type { Employee, Entry, Loan, Order, Sale, Store } from "./types";
 
 export type Tone = "blue" | "purple" | "pink" | "amber" | "teal" | "gray" | "green" | "red";
 export type CatIcon = "megaphone" | "users" | "percent" | "building" | "monitor" | "car" | "truck" | "bank" | "more";

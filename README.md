@@ -18,12 +18,15 @@ income by source, expenses by category and a daily/weekly chart.
 
 ## Where your data is stored
 
-A single JSON file on the server: `data/finance.json` inside the project folder by default, or the path in the `DATA_FILE` env var.
-`/data/` is in `.gitignore`, so it is **never committed**. The file is written atomically with owner-only permissions (0600).
-Automatic backups go to `data/backups/` (beside the data file): the first change of each day saves a copy of the
-file as it was (`finance-YYYY-MM-DD.json`, last 30 days kept), and every delete first saves
-`finance-before-last-delete.json`. To restore, stop the server and copy a backup over `finance.json`.
-To start over, stop the server and delete the file.
+In **your browser** (localStorage), never on the server. The server only checks the admin login.
+
+- Each browser and device keeps its own separate copy. A different browser, a private window, or clearing the
+  site's data starts empty.
+- Account menu (top corner) → **הורדת גיבוי** downloads all data as a JSON file; **טעינת גיבוי** loads such a file
+  (it replaces what this browser has). Use it to back up regularly and to move data between devices.
+  An old `data/finance.json` from the file-based version can be loaded the same way.
+- Before every delete and every import, the previous state is kept in this browser under
+  `finance-dashboard:v1:before-last-delete`.
 
 Sales agents who leave can be **archived** on the agents page: they disappear from the sales form, and their sales stay
 in every past month. An agent can only be deleted while they have no sales.
@@ -43,6 +46,13 @@ npm run dev                    # http://localhost:3000 (this computer only)
 For access from elsewhere, put it behind HTTPS (for example Tailscale) rather than opening the port. If a reverse
 proxy is in front, set `TRUST_PROXY=1` so the login limit uses the real client address.
 
+## Deploy to Vercel
+
+Import the repo at https://vercel.com/new (Next.js defaults), then in **Settings → Environment Variables** add
+`ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET` (and optionally `ADMIN_DISPLAY_NAME`) and redeploy.
+No database is needed: the data stays in each visitor's browser. On Vercel the login limiter trusts
+`X-Forwarded-For` automatically.
+
 ## The single administrator account
 
 There is exactly one user, defined only by server-side environment variables:
@@ -56,8 +66,7 @@ There is exactly one user, defined only by server-side environment variables:
 
 If any required variable is missing the app fails closed: nobody can log in.
 There is no registration page, no second user and no demo bypass.
-To change the password, generate a new hash and restart. Logging out ends every session (also copies of the cookie);
-rotating `SESSION_SECRET` does the same.
+To change the password, generate a new hash and restart. Rotating `SESSION_SECRET` ends every session.
 
 ## How access is enforced (server-side)
 
@@ -68,12 +77,13 @@ rotating `SESSION_SECRET` does the same.
 - Failed logins are rate-limited: 5 per 15 min per client address (taken from `X-Forwarded-For` only when `TRUST_PROXY=1`),
   and 20 per 15 min for the admin username from all addresses. Attempts are counted before the password check, and
   locks cannot be flushed out by flooding.
-- Logout writes a cut-off time to `data/session.json`; tokens issued before it are rejected.
+- Logout clears the session cookie. To end every session everywhere, rotate `SESSION_SECRET`.
 - Security headers: `X-Frame-Options: DENY`, `nosniff`, HSTS, strict referrer policy; `noindex`.
 
 ## Known limitations
 
-- The rate limiter is in-memory: it resets on restart and is not shared across multiple instances. Use Redis or your platform's WAF for multi-instance deployments.
+- The rate limiter is in-memory: it resets on restart and is not shared across serverless instances.
+- The login only protects the screens. The data sits unencrypted in the browser, so anyone using that browser profile can read it.
 - Sessions are stateless; an individual session cannot be revoked before it expires except by rotating `SESSION_SECRET`.
 - No MFA. Add TOTP if the dashboard will ever hold real data.
 - `x-forwarded-for` is trusted for rate limiting; deploy behind a proxy that sets it (Vercel, Nginx, etc.).

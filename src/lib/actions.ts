@@ -1,9 +1,9 @@
-"use server";
+"use client";
 
-import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth/session";
-import { newId, updateStore, type EntryType } from "@/lib/store";
-import { LOAN_CATEGORY, SALARY_CATEGORY } from "@/lib/data";
+// Form handlers. They validate input and save to this browser (local-store.ts); nothing goes to the server.
+import { newId, updateStore } from "./local-store";
+import type { EntryType } from "./types";
+import { LOAN_CATEGORY, SALARY_CATEGORY } from "./data";
 
 export type FormState = { ok?: boolean; error?: string; nonce?: number } | undefined;
 
@@ -29,14 +29,21 @@ function parseDate(raw: FormDataEntryValue | null) {
   return y >= 2000 && y <= 2100 ? s : null;
 }
 
-const done = (): FormState => {
-  revalidatePath("/dashboard", "layout");
-  return { ok: true, nonce: Date.now() };
-};
+/** Turns a failed browser save (storage full or blocked) into a form error instead of a crash. */
+export function guard(fn: (prev: FormState, fd: FormData) => Promise<FormState>) {
+  return async (prev: FormState, fd: FormData): Promise<FormState> => {
+    try {
+      return await fn(prev, fd);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "השמירה נכשלה." };
+    }
+  };
+}
+
+const done = (): FormState => ({ ok: true, nonce: Date.now() });
 
 // ---------- Income / expense entries ----------
 export async function addEntry(_prev: FormState, fd: FormData): Promise<FormState> {
-  await requireSession();
   const type = fd.get("type") as EntryType;
   if (type !== "income" && type !== "expense") return { error: "סוג רשומה לא תקין." };
   const date = parseDate(fd.get("date"));
@@ -52,24 +59,21 @@ export async function addEntry(_prev: FormState, fd: FormData): Promise<FormStat
   if (category === LOAN_CATEGORY) return { error: "החזרי הלוואות מחושבים אוטומטית מעמוד הלוואות. בחרו שם קטגוריה אחר." };
   if (amount === null) return { error: "יש להזין סכום חיובי (עד שתי ספרות אחרי הנקודה)." };
 
-  await updateStore((s) => {
+  updateStore((s) => {
     s.entries.push({ id: newId(), type, date, category, amount, note: note || undefined, person: person || undefined, createdAt: new Date().toISOString() });
   });
   return done();
 }
 
 export async function deleteEntry(fd: FormData) {
-  await requireSession();
   const id = String(fd.get("id") ?? "");
-  await updateStore((s) => {
+  updateStore((s) => {
     s.entries = s.entries.filter((e) => e.id !== id);
   }, { beforeDelete: true });
-  revalidatePath("/dashboard", "layout");
 }
 
 // ---------- Employees ----------
 export async function addEmployee(_prev: FormState, fd: FormData): Promise<FormState> {
-  await requireSession();
   const name = text(fd, "name", 60);
   const target = parseAmount(fd.get("target") || "0", { allowZero: true });
   const rate = parseAmount(fd.get("commissionRate") || "0", { allowZero: true });
@@ -77,7 +81,7 @@ export async function addEmployee(_prev: FormState, fd: FormData): Promise<FormS
   if (target === null) return { error: "יעד חודשי חייב להיות מספר (אפשר 0)." };
   if (rate === null || rate > 100) return { error: "אחוז עמלה חייב להיות בין 0 ל-100." };
 
-  const dup = await updateStore((s) => {
+  const dup = updateStore((s) => {
     if (s.employees.some((e) => e.name === name)) return true;
     s.employees.push({ id: newId(), name, target, commissionRate: rate, createdAt: new Date().toISOString() });
     return false;
@@ -87,13 +91,12 @@ export async function addEmployee(_prev: FormState, fd: FormData): Promise<FormS
 }
 
 export async function updateEmployee(_prev: FormState, fd: FormData): Promise<FormState> {
-  await requireSession();
   const id = String(fd.get("id") ?? "");
   const target = parseAmount(fd.get("target") || "0", { allowZero: true });
   const rate = parseAmount(fd.get("commissionRate") || "0", { allowZero: true });
   if (target === null) return { error: "יעד לא תקין." };
   if (rate === null || rate > 100) return { error: "אחוז עמלה לא תקין." };
-  await updateStore((s) => {
+  updateStore((s) => {
     const e = s.employees.find((x) => x.id === id);
     if (e) Object.assign(e, { target, commissionRate: rate });
   });
@@ -102,30 +105,25 @@ export async function updateEmployee(_prev: FormState, fd: FormData): Promise<Fo
 
 /** Deletes an agent only if they have no sales; otherwise past months' income would change. Archive them instead. */
 export async function deleteEmployee(fd: FormData) {
-  await requireSession();
   const id = String(fd.get("id") ?? "");
-  await updateStore((s) => {
+  updateStore((s) => {
     if (s.sales.some((x) => x.employeeId === id)) return;
     s.employees = s.employees.filter((e) => e.id !== id);
   }, { beforeDelete: true });
-  revalidatePath("/dashboard", "layout");
 }
 
 /** Archive (left the business) or restore an agent. Their sales stay in every month's totals. */
 export async function setEmployeeArchived(fd: FormData) {
-  await requireSession();
   const id = String(fd.get("id") ?? "");
   const archived = fd.get("archived") === "1";
-  await updateStore((s) => {
+  updateStore((s) => {
     const e = s.employees.find((x) => x.id === id);
     if (e) e.archived = archived || undefined;
   });
-  revalidatePath("/dashboard", "layout");
 }
 
 // ---------- Sales (drive commissions) ----------
 export async function addSale(_prev: FormState, fd: FormData): Promise<FormState> {
-  await requireSession();
   const employeeId = String(fd.get("employeeId") ?? "");
   const date = parseDate(fd.get("date"));
   const amount = parseAmount(fd.get("amount"));
@@ -133,7 +131,7 @@ export async function addSale(_prev: FormState, fd: FormData): Promise<FormState
   if (!date) return { error: "יש לבחור תאריך תקין." };
   if (amount === null) return { error: "יש להזין סכום מכירה חיובי." };
 
-  const ok = await updateStore((s) => {
+  const ok = updateStore((s) => {
     if (!s.employees.some((e) => e.id === employeeId && !e.archived)) return false;
     s.sales.push({ id: newId(), employeeId, date, amount, note: note || undefined, createdAt: new Date().toISOString() });
     return true;
@@ -143,17 +141,14 @@ export async function addSale(_prev: FormState, fd: FormData): Promise<FormState
 }
 
 export async function deleteSale(fd: FormData) {
-  await requireSession();
   const id = String(fd.get("id") ?? "");
-  await updateStore((s) => {
+  updateStore((s) => {
     s.sales = s.sales.filter((x) => x.id !== id);
   }, { beforeDelete: true });
-  revalidatePath("/dashboard", "layout");
 }
 
 // ---------- Loans ----------
 export async function addLoan(_prev: FormState, fd: FormData): Promise<FormState> {
-  await requireSession();
   const lender = text(fd, "lender", 60);
   const amount = parseAmount(fd.get("amount"), { allowZero: true });
   const monthlyPayment = parseAmount(fd.get("monthlyPayment"));
@@ -165,24 +160,21 @@ export async function addLoan(_prev: FormState, fd: FormData): Promise<FormState
   if (monthlyPayment === null) return { error: "יש להזין החזר חודשי חיובי." };
   if (!firstPayment) return { error: "יש לבחור תאריך תשלום ראשון." };
   if (!Number.isInteger(payments) || payments < 1 || payments > 600) return { error: "מספר התשלומים חייב להיות בין 1 ל-600." };
-  await updateStore((s) => {
+  updateStore((s) => {
     s.loans.push({ id: newId(), lender, amount, monthlyPayment, firstPayment, payments, note: note || undefined, createdAt: new Date().toISOString() });
   });
   return done();
 }
 
 export async function deleteLoan(fd: FormData) {
-  await requireSession();
   const id = String(fd.get("id") ?? "");
-  await updateStore((s) => {
+  updateStore((s) => {
     s.loans = s.loans.filter((l) => l.id !== id);
   }, { beforeDelete: true });
-  revalidatePath("/dashboard", "layout");
 }
 
 // ---------- Client orders ----------
 export async function addOrder(_prev: FormState, fd: FormData): Promise<FormState> {
-  await requireSession();
   const client = text(fd, "client", 80);
   const date = parseDate(fd.get("date"));
   const amount = parseAmount(fd.get("amount"));
@@ -191,29 +183,25 @@ export async function addOrder(_prev: FormState, fd: FormData): Promise<FormStat
   if (!client) return { error: "יש לכתוב שם לקוח." };
   if (!date) return { error: "יש לבחור תאריך הזמנה." };
   if (amount === null) return { error: "יש להזין סכום הזמנה חיובי." };
-  await updateStore((s) => {
+  updateStore((s) => {
     s.orders.push({ id: newId(), client, date, amount, paidDate: paid ? date : undefined, note: note || undefined, createdAt: new Date().toISOString() });
   });
   return done();
 }
 
 export async function setOrderPaid(fd: FormData) {
-  await requireSession();
   const id = String(fd.get("id") ?? "");
   const paid = fd.get("paid") === "1";
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
-  await updateStore((s) => {
+  updateStore((s) => {
     const o = s.orders.find((x) => x.id === id);
     if (o) o.paidDate = paid ? (today < o.date ? o.date : today) : undefined;
   });
-  revalidatePath("/dashboard", "layout");
 }
 
 export async function deleteOrder(fd: FormData) {
-  await requireSession();
   const id = String(fd.get("id") ?? "");
-  await updateStore((s) => {
+  updateStore((s) => {
     s.orders = s.orders.filter((o) => o.id !== id);
   }, { beforeDelete: true });
-  revalidatePath("/dashboard", "layout");
 }

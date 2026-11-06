@@ -1,14 +1,18 @@
+"use client";
+
 import Link from "next/link";
-import { readStore } from "@/lib/store";
+import { useMonthData } from "@/lib/use-month-data";
+import { Loading } from "@/components/loading";
 import { categorySuggestions, defaultDateFor, formatDate, monthLabel, plainEntriesFor } from "@/lib/data";
 import { formatILS } from "@/lib/format";
 import { DeleteButton, EntryForm } from "@/components/forms";
 import { Empty } from "@/components/empty";
-import { deleteEntry } from "./actions";
+import { deleteEntry } from "@/lib/actions";
 
 /** Shared page body for /dashboard/income and /dashboard/expenses. Callers must run requireSession() first. */
-export async function EntriesPage({ type, month }: { type: "income" | "expense"; month: string }) {
-  const store = await readStore();
+export function EntriesPage({ type }: { type: "income" | "expense" }) {
+  const { store, month } = useMonthData();
+  if (!store) return <Loading />;
   const list = plainEntriesFor(store, month, type);
   const total = list.reduce((s, e) => s + e.amount, 0);
   const isIncome = type === "income";
